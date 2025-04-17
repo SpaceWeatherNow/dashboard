@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SpaceWeatherNow</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            background-color: #0B0D17;
+            color: #F5F5F5;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); /* Angepasst für mehr Spalten */
+            gap: 20px;
+            padding: 20px;
+            justify-content: center;
+        }
+        h1 {
+            color: #7CFC00;
+            text-align: center;
+            grid-column: 1 / -1;
+            margin-bottom: 30px;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+        }
+        h2 {
+            color: #7CFC00;
+            text-align: center;
+            margin-top: 0;
+            margin-bottom: 15px;
+        }
+        .dashboard-item {
+            background-color: #1E213A;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.5);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        h3 {
+            color: #F08080;
+            margin-top: 0;
+            margin-bottom: 10px;
+            font-size: 1.2em;
+        }
+        .data-value {
+            font-size: 1.8em;
+            font-weight: bold;
+            color: #FFFFFF;
+            margin-bottom: 10px;
+        }
+        .data-unit {
+            color: #A9A9A9;
+            font-size: 0.9em;
+        }
+        .kp-container {
+            position: relative;
+        }
+        .kp-info-container {
+            width: 100%;
+            text-align: center;
+            margin-top: 10px;
+        }
+        .kp-info-button {
+            background-color: #3B3F5E;
+            color: #ADD8E6;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 0.9em;
+        }
+        .kp-info-button:hover {
+            background-color: #5B618A;
+        }
+        .kp-info {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            background-color: #292C4A;
+            color: #D3D3D3;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.5);
+            z-index: 10;
+            width: 100%;
+            text-align: left;
+            display: none;
+            margin-top: 10px;
+            box-sizing: border-box;
+        }
+        .kp-info strong {
+            color: #FFFFFF;
+        }
+        .explanation {
+            font-size: 0.9em;
+            color: #D3D3D3;
+            margin-top: 10px;
+        }
+        .icon {
+            font-size: 2em;
+            margin-bottom: 10px;
+            color: #FFA07A;
+        }
+        .polarlicht-info {
+            background-color: #292C4A;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.5);
+            grid-column: 1 / -1;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .polarlicht-links {
+            margin-top: 15px;
+        }
+        .polarlicht-links a {
+            color: #ADD8E6;
+            text-decoration: none;
+            margin: 0 15px;
+            padding: 8px 12px;
+            border-radius: 5px;
+            background-color: #3B3F5E;
+        }
+        .polarlicht-links a:hover {
+            background-color: #5B618A;
+            text-decoration: underline;
+        }
+        .loading {
+            color: #808080;
+            font-style: italic;
+        }
+        .error {
+            color: #FF4500;
+        }
+        .source {
+            font-size: 0.9em;
+            color: #696969;
+            text-align: center;
+            grid-column: 1 / -1;
+            margin-top: 25px;
+        }
+        .image-placeholder {
+            width: 200px; /* Standardbreite der kleinen Ansicht */
+            height: 140px; /* Standardhöhe der kleinen Ansicht */
+            background-color: #3B3F5E;
+            border-radius: 8px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: #D3D3D3;
+            font-size: 0.8em;
+            cursor: pointer;
+            overflow: hidden; /* Verhindert, dass Bild größer als der Container ist */
+            background-size: cover; /* Oder contain, je nachdem wie es aussehen soll */
+            background-position: center;
+            /* Hintergrundbild-Definition entfernt */
+
+            
+}
+        .image-placeholder img, .image-placeholder iframe {
+            width: 100%;
+            height: 100%;
+            object-fit: cover; /* Stellt sicher, dass das Bild den Container ausfüllt */
+        }
+        .image-popup {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.8);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            cursor: pointer;
+        }
+        .image-popup img, .image-popup iframe {
+    max-width: 1000px;
+    max-height: 800px;
+    object-fit: auto; /* Teste diese Option */
+}
+        
+        #ace-rtsw-placeholder {
+    width: 250px; /* Wähle hier die gewünschte Breite für das ACE RTSW-Bild */
+    height: 250px; /* Wähle hier die gewünschte Höhe für das ACE RTSW-Bild */
+}
+
+        #dynamicImage2Container {
+    width: 250px; /* Wähle hier die gewünschte Breite für das Bild/Gif 2 */
+    height: 250px; /* Wähle hier die gewünschte Höhe für das Bild/Gif 2 */
+}
+.aurora-preview-large {
+    width: 250px;
+    height: 250px;
+}
+
+.aurora-preview-large1 {
+    width: 250px;
+    height: 250px;
+}
+
+    </style>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" integrity="sha512-9usAa10IRO0HhonpyAIVpjrylPvoDwiPUiKdWk5t3PyolY1cOd4DSE0Ga+ri4AuTroPR5aQvXU9xC6qOPnzFeg==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+</head>
+<body>
+    <h1><i class="fas fa-globe-americas"></i> SpaceWeatherNow-Dashboard</h1>
+
+    <div class="polarlicht-info">
+        <h2>Weltraumwetter in Echtzeit</h2>
+        <p>Hier siehst du aktuelle Daten zum Weltraumwetter, die wichtig für die Beobachtung von Polarlichtern sein können.</p>
+        <p>(Alle Zeitangaben in UTC)</p>
+        <p><strong>Wichtig:</strong> Aurora-Vorhersagen sind nie ganz sicher. Die besten Chancen hast du in klaren, dunklen Nächten, weit weg von störendem Stadtlicht.</p>
+        <div class="polarlicht-links">
+            <a href="https://www.swpc.noaa.gov/" target="_blank">NOAA Space Weather Prediction Center</a>
+            <a href="https://www.spaceweatherlive.com/en/" target="_blank">SpaceWeatherLive</a>
+        </div>
+    </div>
+
+    <div class="dashboard-item">
+        <i class="fas fa-atom icon"></i>
+        <h3>Solarwinddichte</h3>
+        <p>Dichte: <span id="solar-wind-density" class="data-value loading">Lade...</span> <span class="data-unit">p/cm³</span></p>
+        <p class="explanation">Zeigt, wie viele Teilchen der Sonnenwind enthält. Eine höhere Dichte kann ebenfalls die Polarlichtaktivität erhöhen.</p>
+    </div>
+
+    <div class="dashboard-item">
+        <i class="fas fa-wind icon"></i>
+        <h3>Solarwindgeschwindigkeit</h3>
+        <p>Geschwindigkeit: <span id="solar-wind-speed" class="data-value loading">Lade...</span> <span class="data-unit">km/s</span></p>
+        <p class="explanation">Gibt an, wie schnell der Sonnenwind auf die Erde trifft. Ein schneller Wind kann Polarlichter wahrscheinlicher machen.</p>
+    </div>
+
+    <div class="dashboard-item">
+        <i class="fas fa-compass-needle icon"></i>
+        <h3>Bz-Wert</h3>
+        <p>Wert: <span id="bz-value" class="data-value loading">Lade...</span> <span class="data-unit">nT</span></p>
+        <p class="explanation">Die Nord-Süd-Komponente des interplanetaren Magnetfelds (IMF). Ein stark negativer Bz-Wert begünstigt Polarlichter.</p>
+    </div>
+
+    <div class="dashboard-item">
+        <i class="fas fa-magnet icon"></i>
+        <h3>Bt-Wert</h3>
+        <p>Wert: <span id="bt-value" class="data-value loading">Lade...</span> <span class="data-unit">nT</span></p>
+        <p class="explanation">Die Gesamtstärke des interplanetaren Magnetfelds (IMF). Ein höherer Bt-Wert kann in Verbindung mit einem negativen Bz die Polarlichtaktivität verstärken.</p>
+    </div>
+
+    <div class="dashboard-item kp-container">
+        <i class="fas fa-thermometer-half icon"></i>
+        <h3>Kp-Index</h3>
+        <p>Index: <span id="kp-index" class="data-value loading">Lade...</span></p>
+        <p class="explanation">Ein Maß für die globale geomagnetische Aktivität. Je höher der Wert, desto weiter südlich können Polarlichter sichtbar sein.</p>
+        <div class="kp-info-container">
+            <button class="kp-info-button" onclick="toggleKpInfo()">Mehr Infos zum Kp-Index</button>
+        </div>
+        <div id="kp-info" class="kp-info">
+            <strong>Kp-Werte und ihre Bedeutung (ungefähr):</strong>
+            <ul>
+                <li>Kp 0-3: Sehr geringe bis geringe Aktivität (Polarlichter meist nur in hohen Breiten)</li>
+                <li>Kp 4: Mäßige Aktivität (Polarlichter eventuell in mittleren Breiten sichtbar)</li>
+                <li>Kp 5: Aktive Bedingungen (Gute Chancen für Polarlichter in mittleren Breiten)</li>
+                <li>Kp 6-9: Stürmische Bedingungen (Polarlichter wahrscheinlich auch in niedrigeren Breiten sichtbar)</li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="dashboard-item">
+        <h3>DST-Index</h3>
+        <p>Index: <span id="dst-index" class="data-value loading">Lade...</span> <span class="data-unit">nT</span></p>
+        <p class="explanation">Der Disturbance Storm Time (DST) Index misst die Stärke des äquatorialen Ringstroms. Negative Werte deuten auf geomagnetische Stürme hin.</p>
+    </div>
+
+    <div class="dashboard-item">
+        <h3>Sonnenaktivität</h3>
+        <p>Daten: <span id="solar-activity" class="data-value loading">Lade...</span></p>
+        <p class="explanation">Infos zu aktuellen Sonneneruptionen</p>
+    </div>
+
+    <div class="dashboard-item">
+        <h3>ACE RTSW</h3>
+        <div id="ace-rtsw-placeholder" class="image-placeholder"
+             onclick="showPopup('image1', 'https://services.swpc.noaa.gov/images/ace-epam-3-day.gif')"
+             style="background-image: url('https://services.swpc.noaa.gov/images/ace-epam-3-day.gif');">
+        </div>
+    </div>
+    
+    <div class="dashboard-item">
+        <h3>D Region Absorption Prediction</h3>
+        <div id="dynamicImage2Container" class="image-placeholder"
+             onclick="if (document.getElementById('dynamicImage2').src) { showPopup('dynamicImage2', document.getElementById('dynamicImage2').src); }">
+            <img id="dynamicImage2" src="" alt="Dynamisches Bild 2" style="width: 150%; height: 150%; object-fit: cover;">
+        </div>
+    </div>
+
+    <div class="dashboard-item">
+        <h3>Aurora Prediction</h3>
+        <div class="image-placeholder aurora-preview-large"
+             onclick="showPopup('image3', 'https://services.swpc.noaa.gov/images/animations/ovation/north/latest.jpg')"
+             style="background-image: url('https://services.swpc.noaa.gov/images/animations/ovation/north/latest.jpg');">
+        </div>
+    </div>
+
+    <div class="dashboard-item">
+    <h3>Solar Overview Small</h3>
+    <div class="image-placeholder aurora-preview-large1"
+         onclick="showPopup('image4', 'https://services.swpc.noaa.gov/images/swx-overview-small.gif')"
+         style="background-image: url('https://services.swpc.noaa.gov/images/swx-overview-small.gif');">
+    </div>
+</div>
+
+    <div id="image-popup" class="image-popup" onclick="hidePopup()">
+        <img id="popup-image" src="" alt="Großansicht">
+        <iframe id="popup-iframe" src="" frameborder="0" allowfullscreen style="display:none;"></iframe>
+    </div>
+
+    <p class="source">Daten abgerufen von <a href="https://www.swpc.noaa.gov/content/space-weather-enthusiasts-dashboard-0" target="_blank">swpc.noaa.gov</a>.</p>
+
+    <script>
+        async function fetchSpaceWeatherData() {
+            try {
+                const response1 = await fetch('https://services.swpc.noaa.gov/json/planetary_k_index_1m.json');
+                const data1 = await response1.json();
+                const latestData1 = data1[0];
+
+                const response2 = await fetch('https://services.swpc.noaa.gov/json/rtsw/rtsw_wind_1m.json');
+                const data2 = await response2.json();
+                const latestDataDSCOVR1 = data2.slice(1).find(i => i.source === 'DSCOVR');
+                const latestDataDSCOVR2 = data2.slice(1).find(i => i.source === 'DSCOVR');
+
+                const response4 = await fetch('https://services.swpc.noaa.gov/json/dscovr/dscovr_mag_1s.json');
+                const data4 = await response4.json();
+                const latestData4 = data4[0];
+
+                const response5 = await fetch('https://services.swpc.noaa.gov/json/dscovr/dscovr_mag_1s.json');
+                const data5 = await response5.json();
+                const latestData5 = data5[0];
+
+                const response6 = await fetch('https://services.swpc.noaa.gov/json/geospace/geospace_dst_1_hour.json');
+                const data6 = await response6.json();
+                const latestData6 = data6[0];
+
+                const response7 = await fetch("https://services.swpc.noaa.gov/json/goes/primary/xray-flares-latest.json");
+                const data7 = await response7.json();
+                const latestData7 = data7[0];
+
+                document.getElementById('solar-wind-density').textContent = latestDataDSCOVR1.proton_density;
+                document.getElementById('solar-wind-speed').textContent = latestDataDSCOVR2.proton_speed;
+                document.getElementById('bz-value').textContent = latestData5.bz_gsm;
+                document.getElementById('bt-value').textContent = latestData4.bt;
+                document.getElementById('kp-index').textContent = latestData1.kp_index;
+                document.getElementById('dst-index').textContent = parseFloat(latestData6.dst).toFixed(2);
+                document.getElementById('solar-activity').textContent = latestData7.current_class;
+
+                document.querySelectorAll('.data-value.loading').forEach(element => {
+                    element.classList.remove('loading');
+                });
+            } catch (error) {
+                console.error('Fehler beim Abrufen der Daten:', error);
+                document.querySelectorAll('.data-value').forEach(element => {
+                    element.textContent = 'Fehler!';
+                    element.classList.remove('loading');
+                    element.classList.add('error');
+                });
+            }
+        }
+
+        function updateImage2() {
+    const jsonUrl = 'https://services.swpc.noaa.gov/products/animations/d-rap_global.json'; // Ersetze das durch die URL deiner JSON-Datei für Bild 2
+    const baseUrl = 'https://services.swpc.noaa.gov'; // Ersetze das durch deine Basis-URL (z.B. 'https://example.com')
+
+    fetch(jsonUrl)
+        .then(response => response.json())
+        .then(data => {
+            let imageUrl;
+            if (Array.isArray(data) && data.length > 0 && data[data.length - 1].url) {
+                imageUrl = baseUrl + data[data.length - 1].url; // Kombiniere Basis-URL mit dem relativen Pfad des neuesten Bildes
+            } else {
+                console.error("JSON-Struktur für Bild 2 nicht erkannt oder kein 'url'-Feld im neuesten Eintrag gefunden.");
+                return;
+            }
+            document.getElementById('dynamicImage2').src = imageUrl;
+        })
+        .catch(error => {
+            console.error("Fehler beim Abrufen der JSON-Datei für Bild 2:", error);
+        });
+}
+
+        function toggleKpInfo() {
+            const kpInfoDiv = document.getElementById('kp-info');
+            if (kpInfoDiv.style.display === 'none' || kpInfoDiv.style.display === '') {
+                kpInfoDiv.style.display = 'block';
+            } else {
+                kpInfoDiv.style.display = 'none';
+            }
+        }
+
+        function showPopup(imageId, imageUrl) {
+            const popup = document.getElementById('image-popup');
+            const popupImage = document.getElementById('popup-image');
+            const popupIframe = document.getElementById('popup-iframe');
+
+            popupImage.style.display = 'none';
+            popupIframe.style.display = 'none';
+
+            const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif'];
+            const isImage = imageExtensions.some(ext => imageUrl.toLowerCase().endsWith(ext));
+
+            if (isImage) {
+                popupImage.src = imageUrl;
+                popupImage.alt = `Großansicht von ${imageId}`;
+                popupImage.style.display = 'block';
+            } else if (imageUrl.toLowerCase().endsWith('.mp4') || imageUrl.includes('youtube.com') || imageUrl.includes('vimeo.com')) {
+                popupIframe.src = imageUrl;
+                popupIframe.style.display = 'block';
+            } else {
+                popupImage.src = '';
+                popupImage.alt = 'Ungültiges Format';
+                popupImage.style.display = 'block';
+                popupImage.textContent = 'Ungültiges Format'; // Für den Fall, dass es kein Bild/Video ist
+                popupImage.style.color = 'red';
+                popupImage.style.display = 'flex';
+                popupImage.style.justifyContent = 'center';
+                popupImage.style.alignItems = 'center';
+            }
+
+            popup.style.display = 'flex';
+        }
+
+        function hidePopup() {
+            const popup = document.getElementById('image-popup');
+            popup.style.display = 'none';
+            const popupImage = document.getElementById('popup-image');
+            popupImage.src = '';
+            const popupIframe = document.getElementById('popup-iframe');
+            popupIframe.src = '';
+        }
+
+        fetchSpaceWeatherData();
+        setInterval(fetchSpaceWeatherData, 60000);
+
+        // Initiales Laden des Bildes 2 und automatisches Aktualisieren alle 20 Sekunden
+        updateImage2();
+        setInterval(updateImage2, 20000);
+    </script>
+</body>
+</html>
+            
