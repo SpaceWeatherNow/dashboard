@@ -260,10 +260,10 @@
         <div id="kp-info" class="kp-info">
             <strong>Kp-Werte und ihre Bedeutung (ungefähr):</strong>
             <ul>
-                <li>Kp 0-3: Sehr geringe bis geringe Aktivität (Polarlichter meist nur in hohen Breiten)</li>
-                <li>Kp 4: Mäßige Aktivität (Polarlichter eventuell in mittleren Breiten sichtbar)</li>
-                <li>Kp 5: Aktive Bedingungen (Gute Chancen für Polarlichter in mittleren Breiten)</li>
-                <li>Kp 6-9: Stürmische Bedingungen (Polarlichter wahrscheinlich auch in niedrigeren Breiten sichtbar)</li>
+                <li>Kp 0-4: Geringe Aktivität (Polarlichter meist nur in hohen Breiten)</li>
+                <li>Kp 5-6: Mäßige Aktivität (Polarlichter eventuell in mittleren Breiten sichtbar)</li>
+                <li>Kp 7-8: Starke Aktivität (Gute Chancen für Polarlichter, eventuell in niedrigen breiten)</li>
+                <li>Kp 9: Extreme Aktivität (Warum bist du noch hier? Geh raus!)</li>
             </ul>
         </div>
     </div>
@@ -276,8 +276,24 @@
 
     <div class="dashboard-item">
         <h3>Sonnenaktivität</h3>
-        <p>Daten: <span id="solar-activity" class="data-value loading">Lade...</span></p>
-        <p class="explanation">Infos zu aktuellen Sonneneruptionen</p>
+        <p>Letzte Eruption: <span id="solar-activity" class="data-value loading">Lade...</span></p>
+        <p class="explanation">C = kleine Sonneneruptionen</p>
+        <p class="explanation">M = Mittelgroße Sonneneruptionen</p>
+        <p class="explanation">X = Starke bis Extreme Sonneneruptionen</p>
+    </div>
+
+    <div class="dashboard-item">
+        <h3>Radio Flux 10.7cm</h3>
+        <p> <span id="radio-flux" class="data-value loading">Lade...</span> <span class="data-unit">sfu</span> </p>
+        <p class="explanation">Der solare Radioflussindex ist die spektrale Flussdichte der solaren Radiostrahlung bei der Frequenz von 2,8 GHz, entsprechend einer Wellenlänge von 10,7 cm.</p>
+    </div>
+
+    <div class="dashboard-item">
+        <h3>ACE RTSW 24h</h3>
+        <div id="ace-rtsw-placeholder" class="image-placeholder"
+             onclick="showPopup('image1', 'https://services.swpc.noaa.gov/experimental/images/ace-mag-swepam-24-hour.gif')"
+             style="background-image: url('https://services.swpc.noaa.gov/experimental/images/ace-mag-swepam-24-hour.gif');">
+        </div>
     </div>
 
     <div class="dashboard-item">
@@ -288,6 +304,14 @@
         </div>
     </div>
     
+    <div class="dashboard-item">
+        <h3>Solar Overview Small</h3>
+        <div class="image-placeholder aurora-preview-large1"
+             onclick="showPopup('image4', 'https://services.swpc.noaa.gov/images/swx-overview-small.gif')"
+             style="background-image: url('https://services.swpc.noaa.gov/images/swx-overview-small.gif');">
+        </div>
+    </div>
+
     <div class="dashboard-item">
         <h3>D Region Absorption Prediction</h3>
         <div id="dynamicImage2Container" class="image-placeholder"
@@ -304,20 +328,14 @@
         </div>
     </div>
 
-    <div class="dashboard-item">
-    <h3>Solar Overview Small</h3>
-    <div class="image-placeholder aurora-preview-large1"
-         onclick="showPopup('image4', 'https://services.swpc.noaa.gov/images/swx-overview-small.gif')"
-         style="background-image: url('https://services.swpc.noaa.gov/images/swx-overview-small.gif');">
-    </div>
-</div>
+
 
     <div id="image-popup" class="image-popup" onclick="hidePopup()">
         <img id="popup-image" src="" alt="Großansicht">
         <iframe id="popup-iframe" src="" frameborder="0" allowfullscreen style="display:none;"></iframe>
     </div>
 
-    <p class="source">Daten abgerufen von <a href="https://www.swpc.noaa.gov/content/space-weather-enthusiasts-dashboard-0" target="_blank">swpc.noaa.gov</a>.</p>
+    <p class="source">Daten abgerufen von <a href="https://www.swpc.noaa.gov/communities/space-weather-enthusiasts-dashboard" target="_blank">swpc.noaa.gov</a>.</p>
 
     <script>
         async function fetchSpaceWeatherData() {
@@ -347,6 +365,10 @@
                 const data7 = await response7.json();
                 const latestData7 = data7[0];
 
+                const response8 = await fetch("https://services.swpc.noaa.gov/products/summary/10cm-flux.json");
+                const data8 = await response8.json();
+                const latestData8 = data8;
+
                 document.getElementById('solar-wind-density').textContent = latestDataDSCOVR1.proton_density;
                 document.getElementById('solar-wind-speed').textContent = latestDataDSCOVR2.proton_speed;
                 document.getElementById('bz-value').textContent = latestData5.bz_gsm;
@@ -354,6 +376,7 @@
                 document.getElementById('kp-index').textContent = latestData1.kp_index;
                 document.getElementById('dst-index').textContent = parseFloat(latestData6.dst).toFixed(2);
                 document.getElementById('solar-activity').textContent = latestData7.current_class;
+                document.getElementById('radio-flux').textContent = latestData8.Flux;
 
                 document.querySelectorAll('.data-value.loading').forEach(element => {
                     element.classList.remove('loading');
