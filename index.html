@@ -405,8 +405,8 @@
            const latitude = position.coords.latitude;
            const longitude = position.coords.longitude;
       
-           document.getElementById('latitude').textContent = latitude.toFixed(2);
-           document.getElementById('longitude').textContent = longitude.toFixed(2);
+           document.getElementById('latitude').textContent = formatLatitude(latitude);
+           document.getElementById('longitude').textContent = formatLongitude(longitude);
       
            updateAuroraProbability(latitude);
            document.querySelectorAll('.data-value.loading').forEach(element => element.classList.remove('loading'));
@@ -427,6 +427,20 @@
           document.querySelectorAll('.data-value.loading').forEach(element => element.classList.remove('loading'));
           document.querySelectorAll('.data-value').forEach(element => element.classList.add('error'));
          }
+        }
+      
+        function formatLatitude(latitude) {
+         if (latitude > 60) {
+          return `${latitude.toFixed(2)} (Hoher Breitengrad)`;
+         } else if (latitude > 30) {
+          return `${latitude.toFixed(2)} (Mittlerer Breitengrad)`;
+         } else {
+          return `${latitude.toFixed(2)} (Niedriger Breitengrad)`;
+         }
+        }
+      
+        function formatLongitude(longitude) {
+         return `${longitude.toFixed(2)}`; // Längengrad ist für die Polarlichtwahrscheinlichkeit weniger relevant
         }
       
         function updateAuroraProbability(latitude) {
