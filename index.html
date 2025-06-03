@@ -1063,8 +1063,8 @@
         updateDynamicUtcNotice(); 
     });
 
-    setInterval(fetchSpaceWeatherData, 60000); // Every minute for current values
-    setInterval(fetchHistoricalSpaceWeatherData, 5 * 60 * 1000); // Every 5 minutes for historical data/charts
+    setInterval(fetchSpaceWeatherData, 10000); // Every 10 sec for current values
+    setInterval(fetchHistoricalSpaceWeatherData, 1 * 60 * 1000); // Every 1 minute for historical data/charts
     setInterval(updateDRegionImage, 60 * 1000); // Update D-Region image every minute
     // Optional: Aktualisieren Sie die Zeitzonen-Notiz stündlich, falls sich der Offset durch Sommerzeit ändert (eher selten in einer laufenden Session, aber gut für den nächsten Tag)
     setInterval(updateDynamicUtcNotice, 60 * 60 * 1000); 
