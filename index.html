@@ -84,10 +84,12 @@
             margin-top: 15px;
             line-height: 1.5;
         }
+        /* The .utc-notice style can remain, but the elements using it will be removed/moved */
         .utc-notice {
             font-size: 0.8em;
             color: #888;
             margin-top: 5px;
+            text-align: center; /* Ensure it's centered in the modal */
         }
 
 
@@ -317,8 +319,7 @@
              style="background-image: url('https://services.swpc.noaa.gov/images/ace-mag-swepam-24-hour.gif');">
         </div>
         <p class="description">Magnetfeld- und Sonnenwinddaten vom ACE-Satelliten der letzten 24 Stunden.</p>
-        <p class="utc-notice">Bitte beachten Sie: Die Zeitangaben in diesen Grafiken sind in UTC. Addieren Sie 2 Stunden für die lokale Zeit (MESZ/MEZ).</p>
-    </div>
+        </div>
 
     <div class="card">
         <i class="fas fa-chart-pie icon"></i>
@@ -328,8 +329,7 @@
              style="background-image: url('https://services.swpc.noaa.gov/images/ace-epam-3-day.gif');">
         </div>
         <p class="description">Elektronen- und Protonenaktivität vom ACE-Satelliten der letzten 3 Tage.</p>
-        <p class="utc-notice">Bitte beachten Sie: Die Zeitangaben in diesen Grafiken sind in UTC. Addieren Sie 2 Stunden für die lokale Zeit (MESZ/MEZ).</p>
-    </div>
+        </div>
 
     <div class="card">
         <i class="fas fa-wifi icon"></i>
@@ -339,8 +339,7 @@
             <img id="dynamicImage2" src="" alt="D-Region Absorption" style="display: none;"> <span id="dRegionLoading" style="color: #b0b0b0;">Lade Bild...</span>
         </div>
         <p class="description">Zeigt die Radioabsorptionszone in der D-Region der Ionosphäre, beeinflusst durch Sonnenstrahlung.</p>
-        <p class="utc-notice">Bitte beachten Sie: Die Zeitangaben in diesen Grafiken sind in UTC. Addieren Sie 2 Stunden für die lokale Zeit (MESZ/MEZ).</p>
-    </div>
+        </div>
 
     <div class="card">
         <i class="fas fa-cloud-sun-rain icon"></i>
@@ -363,7 +362,11 @@
             <span id="longitude" class="value loading">Lade...</span>
             <span class="unit">Längengrad</span>
         </div>
-        <p class="description">Deine geografischen Koordinaten, die zur Berechnung der Polarlichtwahrscheinlichkeit genutzt werden.</p>
+        <div class="value-container">
+            <span id="timezone-name" class="value loading">Lade...</span>
+            <span class="unit">Zeitzone</span>
+        </div>
+        <p class="description">Deine geografischen Koordinaten und die erkannte Zeitzone.</p>
     </div>
 
     <div class="card">
@@ -384,6 +387,7 @@
         <h2 id="modalChartTitle"></h2>
         <div class="modal-chart-container">
             <canvas id="modalChart"></canvas>
+            <p id="dynamic-utc-notice" class="utc-notice">Lade Zeitzoneninformationen...</p>
         </div>
         <div class="time-selector-container">
             </div>
@@ -396,11 +400,16 @@
 </div>
 
 <script>
-    // Konfigurieren des Luxon Adapters für Chart.js
+    // Ermittle die lokale Zeitzone des Browsers
+    const userTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    console.log("Erkannte Zeitzone des Nutzers:", userTimeZone);
+
+    // Luxon-Konfiguration für Chart.js
     Chart.defaults.plugins.tooltip.position = 'nearest';
     Chart.defaults.parsing.dateTimeData = {
         parser: function(value) {
-            return luxon.DateTime.fromISO(value, { zone: 'utc' }).setZone('Europe/Berlin');
+            // Die Rohdaten sind UTC, aber wir wollen sie in der lokalen Zeitzone des Nutzers anzeigen
+            return luxon.DateTime.fromISO(value, { zone: 'utc' }).setZone(userTimeZone);
         }
     };
     Chart.defaults.scale.time = {
@@ -431,7 +440,7 @@
     let currentModalChartType = null;
     let modalChartInstance = null;
 
-    // --- Hilfsfunktion zum Slicen der Daten für einen bestimmten Zeitraum (UTC+2 basierend) oder nach Anzahl ---
+    // --- Hilfsfunktion zum Slicen der Daten für einen bestimmten Zeitraum (lokale Zeitzone basierend) oder nach Anzahl ---
     function getSlicedData(sourceData, hours = null, limit = null) {
         if (!sourceData || sourceData.length === 0) return [];
 
@@ -441,10 +450,10 @@
         if (limit && limit > 0) {
             filteredData = filteredData.slice(-limit);
         } else if (hours !== null) {
-            // Otherwise, filter by time
-            const nowInBerlin = luxon.DateTime.now().setZone('Europe/Berlin');
-            const startTimeInBerlin = nowInBerlin.minus({ hours: hours });
-            const startTimeUTC = startTimeInBerlin.toUTC();
+            // Otherwise, filter by time, considering the user's local timezone
+            const nowInUserTz = luxon.DateTime.now().setZone(userTimeZone);
+            const startTimeInUserTz = nowInUserTz.minus({ hours: hours });
+            const startTimeUTC = startTimeInUserTz.toUTC(); // Convert back to UTC for comparison with UTC data
 
             filteredData = sourceData.filter(dp => {
                 const dpTimeUTC = luxon.DateTime.fromISO(dp.x, { zone: 'utc' });
@@ -544,7 +553,7 @@
                     },
                     adapters: {
                         date: {
-                            zone: 'Europe/Berlin'
+                            zone: userTimeZone // Angepasst an die lokale Zeitzone des Nutzers
                         }
                     },
                     ticks: { color: '#888', maxRotation: 0, autoSkipPadding: 10, source: 'auto', maxTicksLimit: 6 },
@@ -560,7 +569,7 @@
                     callbacks: {
                         title: function(context) {
                             if (context[0] && context[0].parsed && context[0].parsed.x) {
-                                return luxon.DateTime.fromMillis(context[0].parsed.x, { zone: 'Europe/Berlin' }).toLocaleString(luxon.DateTime.DATETIME_SHORT_WITH_SECONDS);
+                                return luxon.DateTime.fromMillis(context[0].parsed.x, { zone: userTimeZone }).toLocaleString(luxon.DateTime.DATETIME_SHORT_WITH_SECONDS);
                             }
                             return '';
                         },
@@ -608,7 +617,7 @@
                 if (config.isSinglePoint) {
                     options.scales.x = {
                         type: 'category',
-                        labels: config.data.map(dp => luxon.DateTime.fromISO(dp.x, { zone: 'utc' }).setZone('Europe/Berlin').toFormat('HH:mm')),
+                        labels: config.data.map(dp => luxon.DateTime.fromISO(dp.x, { zone: 'utc' }).setZone(userTimeZone).toFormat('HH:mm')),
                         ticks: { color: '#888'},
                         grid: {display: false}
                     };
@@ -694,24 +703,27 @@
 
                 document.getElementById('latitude').textContent = latitude.toFixed(2);
                 document.getElementById('longitude').textContent = longitude.toFixed(2);
+                document.getElementById('timezone-name').textContent = userTimeZone; // Zeitzone anzeigen
 
                 updateAuroraProbability(latitude);
                 document.getElementById('latitude').classList.remove('loading');
                 document.getElementById('longitude').classList.remove('loading');
+                document.getElementById('timezone-name').classList.remove('loading');
                 document.getElementById('aurora-probability').classList.remove('loading');
             }, error => {
                 console.error("Fehler bei der Standortbestimmung:", error);
                 document.getElementById('latitude').textContent = 'Nicht verfügbar';
                 document.getElementById('longitude').textContent = 'Nicht verfügbar';
+                document.getElementById('timezone-name').textContent = 'Nicht verfügbar';
                 document.getElementById('aurora-probability').textContent = 'Nicht verfügbar';
-                ['latitude', 'longitude', 'aurora-probability'].forEach(id => {
+                ['latitude', 'longitude', 'timezone-name', 'aurora-probability'].forEach(id => {
                     document.getElementById(id).classList.remove('loading');
                     document.getElementById(id).classList.add('error');
                 });
             });
         } else {
             console.error("Geolocation wird von diesem Browser nicht unterstützt.");
-            ['latitude', 'longitude', 'aurora-probability'].forEach(id => {
+            ['latitude', 'longitude', 'timezone-name', 'aurora-probability'].forEach(id => {
                 document.getElementById(id).textContent = 'Nicht unterstützt';
                 document.getElementById(id).classList.remove('loading');
                 document.getElementById(id).classList.add('error');
@@ -842,6 +854,7 @@
     const closeButton = chartModal.querySelector('.close-button');
     const modalChartCanvas = document.getElementById('modalChart');
     const modalChartTitle = document.getElementById('modalChartTitle');
+    const dynamicUtcNotice = document.getElementById('dynamic-utc-notice'); // Das neue Element
 
     document.querySelectorAll('.card[data-chart-type]').forEach(card => {
         card.addEventListener('click', function(event) {
@@ -858,6 +871,7 @@
             } else {
                 renderModalChart('3h'); // Default for other charts
             }
+            updateDynamicUtcNotice(); // Notiz beim Öffnen des Modals aktualisieren
         });
     });
 
@@ -958,7 +972,8 @@
                             callbacks: {
                                 title: function(context) {
                                     if (context[0] && context[0].parsed && context[0].parsed.x) {
-                                        return luxon.DateTime.fromMillis(context[0].parsed.x, { zone: 'Europe/Berlin' }).toLocaleString(luxon.DateTime.DATETIME_SHORT_WITH_SECONDS);
+                                        // Luxon kann direkt in der userTimeZone formatieren
+                                        return luxon.DateTime.fromMillis(context[0].parsed.x, { zone: userTimeZone }).toLocaleString(luxon.DateTime.DATETIME_SHORT_WITH_SECONDS);
                                     }
                                     return '';
                                 },
@@ -987,7 +1002,7 @@
                             },
                             adapters: {
                                 date: {
-                                    zone: 'Europe/Berlin'
+                                    zone: userTimeZone // Angepasst an die lokale Zeitzone des Nutzers
                                 }
                             },
                             ticks: xAxisTicksConfig,
@@ -1000,17 +1015,59 @@
         }
     }
 
+    // Funktion zur dynamischen Aktualisierung der Zeitzonen-Notiz
+    function updateDynamicUtcNotice() {
+        const now = luxon.DateTime.now();
+        const utcNow = luxon.DateTime.now().setZone('utc');
+        const userLocalTime = now.setZone(userTimeZone); // Zeit in der lokalen Zeitzone des Nutzers
+
+        // Differenz in Millisekunden
+        const diffMillis = userLocalTime.diff(utcNow).toMillis();
+        // Differenz in Stunden
+        const diffHours = diffMillis / (1000 * 60 * 60);
+
+        let sign = '';
+        let hours = Math.abs(diffHours);
+        let minutes = (hours - Math.floor(hours)) * 60; // Ggf. Minutenanteil berechnen
+
+        if (diffHours > 0) {
+            sign = 'Addieren';
+        } else if (diffHours < 0) {
+            sign = 'Subtrahieren';
+        } else {
+            dynamicUtcNotice.textContent = `Die Zeitangaben in diesen Grafiken sind in UTC (Ihre Zeitzone "" ist UTC-gleich).`;
+            return;
+        }
+
+        let hoursText = Math.floor(hours);
+        let minutesText = Math.round(minutes);
+
+        let timeOffsetString;
+        if (minutesText === 0) {
+            timeOffsetString = ` Stunde 'n'`;
+        } else {
+            timeOffsetString = ` Stunde 'n' und  Minute 'n'`;
+        }
+
+        dynamicUtcNotice.textContent = `Bitte beachten Sie: Die Zeitangaben in diesen Grafiken sind in UTC. Um die Zeit in Ihrer lokalen Zeitzone ("") zu erhalten, müssen Sie   (UTC '').`;
+    }
+
+
     // --- Initialaufrufe und Intervalle ---
     window.addEventListener('load', () => {
         getLocationAndCalculateAuroraProbability();
         fetchSpaceWeatherData();
         fetchHistoricalSpaceWeatherData();
         updateDRegionImage();
+        // Die Zeitzonen-Notiz direkt beim Laden initialisieren
+        updateDynamicUtcNotice(); 
     });
 
     setInterval(fetchSpaceWeatherData, 60000); // Every minute for current values
     setInterval(fetchHistoricalSpaceWeatherData, 5 * 60 * 1000); // Every 5 minutes for historical data/charts
     setInterval(updateDRegionImage, 60 * 1000); // Update D-Region image every minute
+    // Optional: Aktualisieren Sie die Zeitzonen-Notiz stündlich, falls sich der Offset durch Sommerzeit ändert (eher selten in einer laufenden Session, aber gut für den nächsten Tag)
+    setInterval(updateDynamicUtcNotice, 60 * 60 * 1000); 
 </script>
 </body>
 </html>
