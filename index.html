@@ -209,7 +209,7 @@
             font-size: 0.9em;
             cursor: pointer;
             overflow: hidden;
-            background-size: contain; /* Changed to contain for D-Region, better for some dynamic images */
+            background-size: contain;
             background-repeat: no-repeat;
             background-position: center;
             margin-top: 15px;
@@ -397,25 +397,20 @@
 
 <script>
     // Konfigurieren des Luxon Adapters für Chart.js
-    // Wichtig: Setze die globale Zeitzone für Luxon, die Chart.js verwenden soll
-    // Europa/Berlin berücksichtigt Sommer- und Winterzeit korrekt
-    Chart.defaults.plugins.tooltip.position = 'nearest'; // Standardposition für Tooltips
+    Chart.defaults.plugins.tooltip.position = 'nearest';
     Chart.defaults.parsing.dateTimeData = {
         parser: function(value) {
-            // Parse UTC ISO string, then set to Europe/Berlin for display
             return luxon.DateTime.fromISO(value, { zone: 'utc' }).setZone('Europe/Berlin');
         }
     };
-    // Standardeinstellungen für die Zeitachse in allen Charts
     Chart.defaults.scale.time = {
-        tooltipFormat: 'dd.MM.yyyy HH:mm:ss', // Anzeigeformat im Tooltip
+        tooltipFormat: 'dd.MM.yyyy HH:mm:ss',
         displayFormats: {
             minute: 'HH:mm',
             hour: 'HH:mm',
             day: 'dd.MM'
         }
     };
-
 
     // --- Globale Variablen für Weltraumwetterdaten ---
     let currentKpIndex = 0;
@@ -425,82 +420,48 @@
     let currentBt = 0;
 
     // --- Variablen für historische Chart.js Daten (werden durch API-Aufrufe befüllt) ---
-    // Diese Arrays werden Objekte vom Typ { x: ISO-String (UTC), y: Wert } enthalten
     let historicalDataKp = [];
     let historicalDataIMFz = [];
     let historicalDataSpeed = [];
     let historicalDataDensity = [];
     let historicalDataIMF = [];
     let historicalDataDst = [];
-    // let historicalDataXray = []; // Entfernt
-    // let historicalDataRadioFlux = []; // Entfernt
 
-    let smallChartInstances = {}; // Zum Speichern von Instanzen kleiner Charts
+    let smallChartInstances = {};
     let currentModalChartType = null;
     let modalChartInstance = null;
 
-    // --- Hilfsfunktion zur Umwandlung von Röntgenklasse in einen numerischen Wert ---
-    /* Entfernt, da X-Ray Flux entfernt wurde
-    function convertXrayClassToNumber(xrayClass) {
-        if (!xrayClass) return 0;
-        const letter = xrayClass.charAt(0);
-        const number = parseFloat(xrayClass.substring(1));
-        let baseValue = 0;
-        if (letter === 'A') baseValue = 1e-8;
-        else if (letter === 'B') baseValue = 1e-7;
-        else if (letter === 'C') baseValue = 1e-6;
-        else if (letter === 'M') baseValue = 1e-5;
-        else if (letter === 'X') baseValue = 1e-4;
-        return number * baseValue;
-    }
-    */
-
-    // --- Hilfsfunktion zur Umwandlung des numerischen Werts zurück in die Röntgenklasse ---
-    /* Entfernt, da X-Ray Flux entfernt wurde
-    function convertNumberToXrayClass(numValue) {
-        if (numValue === 0) return 'A0.0';
-        let letter = '';
-        let number = 0;
-
-        if (numValue >= 1e-4) { letter = 'X'; number = numValue / 1e-4; }
-        else if (numValue >= 1e-5) { letter = 'M'; number = numValue / 1e-5; }
-        else if (numValue >= 1e-6) { letter = 'C'; number = numValue / 1e-6; }
-        else if (numValue >= 1e-7) { letter = 'B'; number = numValue / 1e-7; }
-        else if (numValue >= 1e-8) { letter = 'A'; number = numValue / 1e-8; }
-        else { return 'A0.0'; }
-
-        return ``; // Zeigt eine Nachkommastelle
-    }
-    */
-
-    // --- Hilfsfunktion zum Slicen der Daten für einen bestimmten Zeitraum (UTC+2 basierend) ---
-    // Erwartet sourceData als Array von {x: ISO-String (UTC), y: value}
-    function getSlicedData(sourceData, hours) {
+    // --- Hilfsfunktion zum Slicen der Daten für einen bestimmten Zeitraum (UTC+2 basierend) oder nach Anzahl ---
+    function getSlicedData(sourceData, hours = null, limit = null) {
         if (!sourceData || sourceData.length === 0) return [];
 
-        // Bestimme die aktuelle Zeit in der gewünschten Anzeigezeitzone (Europe/Berlin)
-        const nowInBerlin = luxon.DateTime.now().setZone('Europe/Berlin');
-        // Berechne die Startzeit, indem 'hours' von der aktuellen Zeit in Berlin abgezogen wird
-        const startTimeInBerlin = nowInBerlin.minus({ hours: hours });
+        let filteredData = [...sourceData]; // Create a copy to avoid modifying original array
 
-        // Konvertiere diese Berliner Startzeit zurück nach UTC, um die Quelldaten zu filtern
-        const startTimeUTC = startTimeInBerlin.toUTC();
+        // If a limit is provided, take the last 'limit' entries
+        if (limit && limit > 0) {
+            filteredData = filteredData.slice(-limit);
+        } else if (hours !== null) {
+            // Otherwise, filter by time
+            const nowInBerlin = luxon.DateTime.now().setZone('Europe/Berlin');
+            const startTimeInBerlin = nowInBerlin.minus({ hours: hours });
+            const startTimeUTC = startTimeInBerlin.toUTC();
 
-        const filteredData = sourceData.filter(dp => {
-            const dpTimeUTC = luxon.DateTime.fromISO(dp.x, { zone: 'utc' });
-            return dpTimeUTC >= startTimeUTC;
-        });
-
-        // Stelle sicher, dass die Daten für Chart.js nach der Zeit sortiert sind
+            filteredData = sourceData.filter(dp => {
+                const dpTimeUTC = luxon.DateTime.fromISO(dp.x, { zone: 'utc' });
+                return dpTimeUTC >= startTimeUTC;
+            });
+        }
+        
+        // Always sort, even if sliced by limit, to ensure chronological order for charts
         return filteredData.sort((a, b) => luxon.DateTime.fromISO(a.x, { zone: 'utc' }).toMillis() - luxon.DateTime.fromISO(b.x, { zone: 'utc' }).toMillis());
     }
-
 
     // --- Funktion zum Abrufen historischer Daten für Charts ---
     async function fetchHistoricalSpaceWeatherData() {
         try {
+            // Updated to fetch from rtsw_mag_1m.json for Bz and Bt
             const [responseMag, responseWind, responseKpHistorical, responseDstHistorical] = await Promise.all([
-                fetch('https://services.swpc.noaa.gov/json/dscovr/dscovr_mag_1s.json'),
+                fetch('https://services.swpc.noaa.gov/json/rtsw/rtsw_mag_1m.json'), // Changed this source
                 fetch('https://services.swpc.noaa.gov/json/rtsw/rtsw_wind_1m.json'),
                 fetch('https://services.swpc.noaa.gov/json/planetary_k_index_1m.json'),
                 fetch('https://services.swpc.noaa.gov/json/geospace/geospace_dst_1_hour.json')
@@ -521,23 +482,20 @@
 
             // Kp-Daten verarbeiten
             dataKpHistorical.forEach(item => {
-                // Time_tag ist bereits im ISO-Format (UTC), so speichern
                 if (item.kp_index !== null) {
                     historicalDataKp.push({ x: item.time_tag, y: parseFloat(item.kp_index) });
                 }
             });
             historicalDataKp.sort((a, b) => luxon.DateTime.fromISO(a.x, { zone: 'utc' }).toMillis() - luxon.DateTime.fromISO(b.x, { zone: 'utc' }).toMillis());
 
-
             // Magnetometerdaten (Bz und Bt) verarbeiten
-            // Um die Daten von den neuesten links nach den ältesten rechts zu sortieren, kehren wir die Reihenfolge um
-            dataMag.forEach(item => {
+            // Filter nach source: "DSCOVR" (oder "ACE" falls es dort auftaucht)
+            dataMag.filter(item => item.source === 'DSCOVR' || item.source === 'ACE').forEach(item => {
                 if (item.bz_gsm !== null) historicalDataIMFz.push({ x: item.time_tag, y: parseFloat(item.bz_gsm) });
                 if (item.bt !== null) historicalDataIMF.push({ x: item.time_tag, y: parseFloat(item.bt) });
             });
             historicalDataIMFz.sort((a, b) => luxon.DateTime.fromISO(a.x, { zone: 'utc' }).toMillis() - luxon.DateTime.fromISO(b.x, { zone: 'utc' }).toMillis());
             historicalDataIMF.sort((a, b) => luxon.DateTime.fromISO(a.x, { zone: 'utc' }).toMillis() - luxon.DateTime.fromISO(b.x, { zone: 'utc' }).toMillis());
-
 
             // Winddaten (Geschwindigkeit und Dichte) verarbeiten
             dataWind.filter(item => item.source === 'DSCOVR').forEach(item => {
@@ -555,7 +513,6 @@
             });
             historicalDataDst.sort((a, b) => luxon.DateTime.fromISO(a.x, { zone: 'utc' }).toMillis() - luxon.DateTime.fromISO(b.x, { zone: 'utc' }).toMillis());
 
-
             renderSmallCharts();
 
         } catch (error) {
@@ -570,7 +527,6 @@
         }
         smallChartInstances = {};
 
-        // Optionen für alle kleinen Charts (immer für die letzten 3 Stunden)
         const commonChartOptions = (specificTimeUnit = 'hour') => ({
             responsive: true,
             plugins: { legend: { display: false } },
@@ -579,7 +535,7 @@
                     type: 'time',
                     time: {
                         unit: specificTimeUnit,
-                        tooltipFormat: 'dd.MM.yyyy HH:mm:ss', // Consistent full tooltip format
+                        tooltipFormat: 'dd.MM.yyyy HH:mm:ss',
                         displayFormats: {
                             minute: 'HH:mm',
                             hour: 'HH:mm',
@@ -588,7 +544,7 @@
                     },
                     adapters: {
                         date: {
-                            zone: 'Europe/Berlin' // Force timezone for the X-axis
+                            zone: 'Europe/Berlin'
                         }
                     },
                     ticks: { color: '#888', maxRotation: 0, autoSkipPadding: 10, source: 'auto', maxTicksLimit: 6 },
@@ -604,7 +560,6 @@
                     callbacks: {
                         title: function(context) {
                             if (context[0] && context[0].parsed && context[0].parsed.x) {
-                                // The x value is already in milliseconds, Luxon can convert it to Europe/Berlin
                                 return luxon.DateTime.fromMillis(context[0].parsed.x, { zone: 'Europe/Berlin' }).toLocaleString(luxon.DateTime.DATETIME_SHORT_WITH_SECONDS);
                             }
                             return '';
@@ -613,15 +568,10 @@
                             let lbl = context.dataset.label || '';
                             if (lbl) lbl += ': ';
                             if (context.parsed.y !== null) {
-                                // if (context.dataset.label === 'X-Ray-Flux') { // Specific check for Xray - Entfernt
-                                //     lbl += convertNumberToXrayClass(context.parsed.y);
-                                // } else {
-                                    lbl += context.parsed.y.toFixed(2);
-                                    if (context.dataset.label === 'Bz-Wert' || context.dataset.label === 'IMF total field' || context.dataset.label === 'DST-Index') lbl += ' nT';
-                                    else if (context.dataset.label === 'Geschwindigkeit') lbl += ' km/s';
-                                    else if (context.dataset.label === 'Dichte') lbl += ' p/cm³';
-                                    // else if (context.dataset.label === 'Radio Flux') lbl += ' sfu'; // Entfernt
-                                // }
+                                lbl += context.parsed.y.toFixed(2);
+                                if (context.dataset.label === 'Bz-Wert' || context.dataset.label === 'IMF total field' || context.dataset.label === 'DST-Index') lbl += ' nT';
+                                else if (context.dataset.label === 'Geschwindigkeit') lbl += ' km/s';
+                                else if (context.dataset.label === 'Dichte') lbl += ' p/cm³';
                             }
                             return lbl;
                         }
@@ -637,8 +587,6 @@
             'chartDensitySmall': { label: 'Dichte', data: getSlicedData(historicalDataDensity, 3), color: '#e57373', timeUnit: 'minute' },
             'chartBtSmall': { label: 'Bt-Wert', data: getSlicedData(historicalDataIMF, 3), color: '#2196f3', timeUnit: 'minute' },
             'chartDstSmall': { label: 'DST-Index', data: getSlicedData(historicalDataDst, 3), color: '#f44336', timeUnit: 'minute' },
-            // 'chartXraySmall': { label: 'X-Ray-Flux', data: getSlicedData(historicalDataXray, 3), color: '#ffeb3b', timeUnit: 'minute' }, // Entfernt
-            // 'chartRadioFluxSmall': { label: 'Radio Flux', data: historicalDataRadioFlux, color: '#9c27b0', isSinglePoint: true }, // Entfernt
         };
 
         for (const id in chartConfigs) {
@@ -657,25 +605,9 @@
                 };
                 let options = commonChartOptions(config.timeUnit || 'hour');
 
-                /* Entfernt, da X-Ray Flux entfernt wurde
-                // Special handling for Xray small chart y-axis
-                if (id === 'chartXraySmall') {
-                    options.scales.y = {
-                        type: 'logarithmic',
-                        ticks: {
-                            callback: function(value, index, values) {
-                                return convertNumberToXrayClass(value);
-                            },
-                            color: '#888'
-                        },
-                        grid: { color: 'rgba(255,255,255,0.05)' }
-                    };
-                }
-                */
-
-                if (config.isSinglePoint) { // Dies wird für RadioFlux nicht mehr benötigt, aber falls andere SinglePoint-Daten hinzugefügt werden
+                if (config.isSinglePoint) {
                     options.scales.x = {
-                        type: 'category', // For single point, category axis is better
+                        type: 'category',
                         labels: config.data.map(dp => luxon.DateTime.fromISO(dp.x, { zone: 'utc' }).setZone('Europe/Berlin').toFormat('HH:mm')),
                         ticks: { color: '#888'},
                         grid: {display: false}
@@ -691,25 +623,20 @@
     // --- Abrufen und Aktualisieren der aktuellen Echtzeitdaten ---
     async function fetchSpaceWeatherData() {
         try {
+            // Updated to fetch from rtsw_mag_1m.json for current Bz and Bt
             const [
-                resKp, resWind, resMag, resDst /* , resXrayCurrent, resRadioFlux, resXray7Day */ // Entfernt
+                resKp, resWind, resMag, resDst
             ] = await Promise.all([
                 fetch('https://services.swpc.noaa.gov/json/planetary_k_index_1m.json'),
                 fetch('https://services.swpc.noaa.gov/json/rtsw/rtsw_wind_1m.json'),
-                fetch('https://services.swpc.noaa.gov/json/dscovr/dscovr_mag_1s.json'),
+                fetch('https://services.swpc.noaa.gov/json/rtsw/rtsw_mag_1m.json'), // Changed this source
                 fetch('https://services.swpc.noaa.gov/json/geospace/geospace_dst_1_hour.json'),
-                // fetch("https://services.swpc.noaa.gov/json/goes/primary/xray-flares-latest.json"), // Entfernt
-                // fetch("https://services.swpc.noaa.gov/products/summary/10cm-flux.json"), // Entfernt
-                // fetch("https://services.swpc.noaa.gov/json/goes/primary/xray-flares-7-day.json") // Entfernt
             ]);
 
             const dataKp = await resKp.json();
             const dataWind = await resWind.json();
-            const dataMag = await resMag.json();
+            const dataMag = await resMag.json(); // Data from rtsw_mag_1m.json
             const dataDst = await resDst.json();
-            // const dataXrayCurrent = await resXrayCurrent.json(); // Entfernt
-            // const dataRadioFlux = await resRadioFlux.json(); // Entfernt
-            // const dataXray7Day = await resXray7Day.json(); // Entfernt
 
             // Kp Index - Neueste ist oft am Ende des Arrays
             const latestKpData = dataKp[dataKp.length - 1];
@@ -724,8 +651,11 @@
             document.getElementById('solar-wind-speed').textContent = latestWindData ? currentSolarWindSpeed.toFixed(0) : 'N/A';
             document.getElementById('solar-wind-density').textContent = latestWindData ? currentSolarWindDensity.toFixed(2) : 'N/A';
 
-            // Bz & Bt from 1s DSCOVR mag data (most recent is usually at index 0)
-            const latestMagData = dataMag[0];
+            // Bz & Bt from rtsw_mag_1m.json (filter by source and get latest)
+            // Sort to get the most recent data point from DSCOVR or ACE
+            const latestMagData = dataMag.filter(item => item.source === 'DSCOVR' || item.source === 'ACE')
+                                         .sort((a,b) => luxon.DateTime.fromISO(b.time_tag, { zone: 'utc' }).toMillis() - luxon.DateTime.fromISO(a.time_tag, { zone: 'utc' }).toMillis())[0];
+
             currentBz = latestMagData && latestMagData.bz_gsm !== null ? parseFloat(latestMagData.bz_gsm) : 0;
             currentBt = latestMagData && latestMagData.bt !== null ? parseFloat(latestMagData.bt) : 0;
             document.getElementById('bz-value').textContent = latestMagData ? currentBz.toFixed(2) : 'N/A';
@@ -734,36 +664,6 @@
             // DST Index (most recent is usually at index 0)
             const latestDstData = dataDst[0];
             document.getElementById('dst-index').textContent = latestDstData && latestDstData.dst !== null ? parseFloat(latestDstData.dst).toFixed(2) : 'N/A';
-
-            /* Entfernt, da X-Ray Flux entfernt wurde
-            // X-Ray Flux Current (latest.json returns a single object in an array)
-            const latestXrayCurrentData = dataXrayCurrent[0];
-            document.getElementById('solar-activity').textContent = latestXrayCurrentData ? latestXrayCurrentData.current_class : 'N/A';
-
-            // Max X-Ray Flux 24h
-            const nowInBerlin = luxon.DateTime.now().setZone('Europe/Berlin');
-            const dayAgoUTC = nowInBerlin.minus({ hours: 24 }).toUTC();
-            let maxClassValueNumeric = 0;
-            let maxClassString = 'A0.0';
-
-            dataXray7Day.forEach(item => {
-                // Compare item's UTC time_tag with our UTC threshold
-                if (item.time_tag && luxon.DateTime.fromISO(item.time_tag, { zone: 'utc' }) >= dayAgoUTC) {
-                    const classValue = item.max_class || item.xray_class;
-                    if (classValue) {
-                        const numericValue = convertXrayClassToNumber(classValue);
-                        if (numericValue > maxClassValueNumeric) {
-                            maxClassValueNumeric = numericValue;
-                            maxClassString = classValue;
-                        }
-                    }
-                }
-            });
-            document.getElementById('solar-activity-max').textContent = maxClassString;
-
-            // Radio Flux 10.7cm
-            document.getElementById('radio-flux').textContent = dataRadioFlux && dataRadioFlux.Flux ? parseFloat(dataRadioFlux.Flux).toFixed(2) : 'N/A';
-            */
 
             // Alle "Lade..."-Texte entfernen und ggf. Fehlertexte zurücksetzen
             document.querySelectorAll('.value.loading').forEach(element => {
@@ -775,9 +675,8 @@
 
         } catch (error) {
             console.error('Fehler beim Abrufen der aktuellen Daten:', error);
-            // Alle "Lade..."-Texte in "Fehler!" ändern
             document.querySelectorAll('.value').forEach(element => {
-                if (element.classList.contains('loading')) { // Nur aktualisieren, wenn noch geladen wird
+                if (element.classList.contains('loading')) {
                     element.textContent = 'Fehler!';
                     element.classList.remove('loading');
                     element.classList.add('error');
@@ -865,8 +764,8 @@
         const placeholderDiv = document.getElementById('dynamicImage2Container');
         const loadingSpan = document.getElementById('dRegionLoading');
 
-        imgElement.style.display = 'none'; // Hide image while loading
-        loadingSpan.style.display = 'block'; // Show loading text
+        imgElement.style.display = 'none';
+        loadingSpan.style.display = 'block';
 
         fetch(jsonUrl)
             .then(response => {
@@ -877,7 +776,6 @@
             })
             .then(data => {
                 let imageUrl;
-                // Find the latest image URL from the array
                 if (Array.isArray(data) && data.length > 0) {
                     imageUrl = baseUrl + data[data.length - 1].url;
                     imgElement.onload = () => {
@@ -939,39 +837,14 @@
         document.getElementById('popup-iframe').src = '';
     }
 
-    // --- X-Flare Alarm ---
-    /* Entfernt, da X-Ray Flux entfernt wurde
-    async function checkSolarActivityForXFlare() {
-        try {
-            const response = await fetch("https://services.swpc.noaa.gov/json/goes/primary/xray-flares-7-day.json");
-            const data = await response.json();
-            const nowInBerlin = luxon.DateTime.now().setZone('Europe/Berlin');
-            const lastHourUTC = nowInBerlin.minus({ hours: 1 }).toUTC(); // Compare with UTC time from data
-
-            const newXFlareDetected = data.some(item =>
-                item.time_tag && luxon.DateTime.fromISO(item.time_tag, { zone: 'utc' }) > lastHourUTC && item.max_class && item.max_class.startsWith('X')
-            );
-
-            if (newXFlareDetected && !sessionStorage.getItem('xFlareAlerted')) {
-                alert("Achtung! Eine starke X-Sonneneruption wurde registriert!");
-                sessionStorage.setItem('xFlareAlerted', 'true');
-            }
-        } catch (error) {
-            console.error("Fehler beim Abrufen der X-Flare-Daten für Alert:", error);
-        }
-    }
-    */
-
     // --- Modal Chart Funktionalität ---
     const chartModal = document.getElementById('chartModal');
     const closeButton = chartModal.querySelector('.close-button');
     const modalChartCanvas = document.getElementById('modalChart');
     const modalChartTitle = document.getElementById('modalChartTitle');
-    // Removed reference to timeSelectorContainer as it's now hidden
 
     document.querySelectorAll('.card[data-chart-type]').forEach(card => {
         card.addEventListener('click', function(event) {
-            // Prevent modal from opening if info button was clicked
             if (event.target.classList.contains('kp-info-button')) {
                 return;
             }
@@ -979,9 +852,12 @@
             const title = this.querySelector('h2').textContent;
             modalChartTitle.textContent = title;
             chartModal.style.display = 'flex';
-
-            // Always render for 3 hours, no specific period selection needed from buttons
-            renderModalChart('3h');
+            // For DST, pass the limit parameter
+            if (currentModalChartType === 'DST') {
+                renderModalChart('50_values'); // Custom period string to indicate "last 50 values"
+            } else {
+                renderModalChart('3h'); // Default for other charts
+            }
         });
     });
 
@@ -1003,68 +879,52 @@
         }
     });
 
-    function renderModalChart(period) { // Period will always be '3h' now
-        let chartData, chartLabel, color, valueSuffix = '', timeUnit = 'minute';
-        let hours = parseInt(period.replace('h', '')); // Will always be 3
+    function renderModalChart(period) {
+        let chartData, chartLabel, color, valueSuffix = '', timeUnit = 'hour'; // Default to hour for modal charts
+        let limit = null;
+        let hours = null;
+
+        if (period === '50_values') {
+            limit = 50;
+        } else {
+            hours = parseInt(period.replace('h', ''));
+        }
 
         let sourceFullData;
 
         switch(currentModalChartType) {
             case 'Kp':
-                sourceFullData = historicalDataKp; chartLabel = 'Kp-Index'; color = '#00bcd4';
+                sourceFullData = historicalDataKp; chartLabel = 'Kp-Index'; color = '#00bcd4'; timeUnit = 'minute';
                 break;
             case 'IMFz':
-                sourceFullData = historicalDataIMFz; chartLabel = 'Bz-Wert'; color = '#ff9800'; valueSuffix = ' nT';
+                sourceFullData = historicalDataIMFz; chartLabel = 'Bz-Wert'; color = '#ff9800'; valueSuffix = ' nT'; timeUnit = 'minute';
                 break;
             case 'Speed':
-                sourceFullData = historicalDataSpeed; chartLabel = 'Solarwindgeschwindigkeit'; color = '#4caf50'; valueSuffix = ' km/s';
+                sourceFullData = historicalDataSpeed; chartLabel = 'Solarwindgeschwindigkeit'; color = '#4caf50'; valueSuffix = ' km/s'; timeUnit = 'minute';
                 break;
             case 'Density':
-                sourceFullData = historicalDataDensity; chartLabel = 'Solarwinddichte'; color = '#e57373'; valueSuffix = ' p/cm³';
+                sourceFullData = historicalDataDensity; chartLabel = 'Solarwinddichte'; color = '#e57373'; valueSuffix = ' p/cm³'; timeUnit = 'minute';
                 break;
             case 'IMF':
-                sourceFullData = historicalDataIMF; chartLabel = 'Bt-Wert'; color = '#2196f3'; valueSuffix = ' nT';
+                sourceFullData = historicalDataIMF; chartLabel = 'Bt-Wert'; color = '#2196f3'; valueSuffix = ' nT'; timeUnit = 'minute';
                 break;
             case 'DST':
-                sourceFullData = historicalDataDst; chartLabel = 'DST-Index'; color = '#f44336'; valueSuffix = ' nT';
+                sourceFullData = historicalDataDst; chartLabel = 'DST-Index'; color = '#f44336'; valueSuffix = ' nT'; timeUnit = 'hour'; // DST is hourly data
                 break;
-            /* Entfernt, da X-Ray Flux und Radio Flux entfernt wurden
-            case 'Xray':
-                sourceFullData = historicalDataXray; chartLabel = 'X-Ray-Flux'; color = '#ffeb3b';
-                break;
-            case 'RadioFlux':
-                // For single point, we just use the latest data
-                chartData = historicalDataRadioFlux.length > 0 ? [historicalDataRadioFlux[historicalDataRadioFlux.length - 1]] : [{x: luxon.DateTime.now().setZone('Europe/Berlin').toISO(), y:0}];
-                chartLabel = 'Radio Flux 10.7cm'; color = '#9c27b0'; valueSuffix = ' sfu';
-                break;
-            */
             default: return;
         }
 
-        // if (currentModalChartType !== 'RadioFlux') { // Bedingung angepasst
-            chartData = getSlicedData(sourceFullData, hours); // Always slices for 3 hours
-        // }
+        chartData = getSlicedData(sourceFullData, hours, limit);
 
         if (modalChartInstance) {
             modalChartInstance.data.datasets[0].data = chartData;
             modalChartInstance.options.scales.x.time.unit = timeUnit;
-            /* Entfernt, da X-Ray Flux entfernt wurde
-            // Update Y-axis for Xray specifically
-            if (currentModalChartType === 'Xray') {
-                modalChartInstance.options.scales.y.type = 'logarithmic';
-                modalChartInstance.options.scales.y.ticks = {
-                    callback: function(value, index, values) {
-                        return convertNumberToXrayClass(value);
-                    },
-                    color: '#b0b0b0'
-                };
-            } else {
-                modalChartInstance.options.scales.y.type = 'linear';
-                modalChartInstance.options.scales.y.ticks = { color: '#b0b0b0' };
-            }
-            */
-            modalChartInstance.update();
-        } else {
+            // If the time unit changes, it's often better to redraw the chart fully for scale formatting
+            modalChartInstance.destroy();
+            modalChartInstance = null; // Set to null so the new chart is created below
+        }
+
+        if (!modalChartInstance) {
             let xAxisTicksConfig = {
                 color: '#b0b0b0',
                 source: 'auto',
@@ -1078,21 +938,6 @@
                 grid: { color: 'rgba(255,255,255,0.1)' }
             };
 
-            /* Entfernt, da X-Ray Flux entfernt wurde
-            if (currentModalChartType === 'Xray') {
-                yAxisConfig = {
-                    type: 'logarithmic',
-                    ticks: {
-                        callback: function(value, index, values) {
-                            return convertNumberToXrayClass(value);
-                        },
-                        color: '#b0b0b0'
-                    },
-                    grid: { color: 'rgba(255,255,255,0.1)' }
-                };
-            }
-            */
-
             modalChartInstance = new Chart(modalChartCanvas, {
                 type: 'line',
                 data: {
@@ -1102,8 +947,7 @@
                         borderColor: color,
                         backgroundColor: 'rgba(0,0,0,0)',
                         tension: 0.3,
-                        // pointRadius: currentModalChartType === 'RadioFlux' ? 5 : 0 // Bedingung angepasst
-                        pointRadius: 0 // Da RadioFlux entfernt wurde, immer 0
+                        pointRadius: 0
                     }]
                 },
                 options: {
@@ -1114,7 +958,6 @@
                             callbacks: {
                                 title: function(context) {
                                     if (context[0] && context[0].parsed && context[0].parsed.x) {
-                                        // Display date/time in Europe/Berlin timezone
                                         return luxon.DateTime.fromMillis(context[0].parsed.x, { zone: 'Europe/Berlin' }).toLocaleString(luxon.DateTime.DATETIME_SHORT_WITH_SECONDS);
                                     }
                                     return '';
@@ -1123,8 +966,6 @@
                                     let lbl = context.dataset.label || '';
                                     if (lbl) lbl += ': ';
                                     if (context.parsed.y !== null) {
-                                        // if (currentModalChartType === 'Xray') lbl += convertNumberToXrayClass(context.parsed.y); // Entfernt
-                                        // else lbl += context.parsed.y.toFixed(2) + valueSuffix;
                                         lbl += context.parsed.y.toFixed(2) + valueSuffix;
                                     }
                                     return lbl;
@@ -1146,7 +987,7 @@
                             },
                             adapters: {
                                 date: {
-                                    zone: 'Europe/Berlin' // Force timezone for the X-axis
+                                    zone: 'Europe/Berlin'
                                 }
                             },
                             ticks: xAxisTicksConfig,
@@ -1156,17 +997,6 @@
                     }
                 }
             });
-            /* Entfernt, da RadioFlux entfernt wurde
-            if (currentModalChartType === 'RadioFlux') {
-                modalChartInstance.options.scales.x = {
-                    type: 'category',
-                    labels: chartData.map(dp => luxon.DateTime.fromISO(dp.x, { zone: 'utc' }).setZone('Europe/Berlin').toFormat('HH:mm')),
-                    ticks: { color: '#b0b0b0'},
-                    grid: {display: false}
-                };
-                modalChartInstance.update();
-            }
-            */
         }
     }
 
@@ -1175,14 +1005,12 @@
         getLocationAndCalculateAuroraProbability();
         fetchSpaceWeatherData();
         fetchHistoricalSpaceWeatherData();
-        updateDRegionImage(); // Call once on load
-        // checkSolarActivityForXFlare(); // Entfernt
+        updateDRegionImage();
     });
 
     setInterval(fetchSpaceWeatherData, 60000); // Every minute for current values
     setInterval(fetchHistoricalSpaceWeatherData, 5 * 60 * 1000); // Every 5 minutes for historical data/charts
     setInterval(updateDRegionImage, 60 * 1000); // Update D-Region image every minute
-    // setInterval(checkSolarActivityForXFlare, 5 * 60 * 1000); // Check for X-flares every 5 minutes - Entfernt
 </script>
 </body>
 </html>
