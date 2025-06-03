@@ -412,11 +412,15 @@
             return luxon.DateTime.fromISO(value, { zone: 'utc' }).setZone(userTimeZone);
         }
     };
+    // Diese Standard-Anzeigeformate für Achsen sind gut lesbar.
+    // Wenn du hier den UTC-Offset und die Zeitzone DIREKT in den Achsen-Labels sehen möchtest,
+    // müsstest du diese Formate ändern, z.B. zu 'HH:mm (ZZZ ZZZZ)'
+    // Beachte: Das kann die Achsen überladen!
     Chart.defaults.scale.time = {
         tooltipFormat: 'dd.MM.yyyy HH:mm:ss',
         displayFormats: {
-            minute: 'HH:mm',
-            hour: 'HH:mm',
+            minute: 'HH:mm', // Oder 'HH:mm (ZZZZ)' für Zeitzonen-Abkürzung
+            hour: 'HH:mm',   // Oder 'HH:mm (ZZZZ)'
             day: 'dd.MM'
         }
     };
@@ -545,10 +549,17 @@
                     time: {
                         unit: specificTimeUnit,
                         tooltipFormat: 'dd.MM.yyyy HH:mm:ss',
+                        // Hier kannst du die Achsenbeschriftungen anpassen, falls du den Offset/Zeitzone direkt sehen möchtest
                         displayFormats: {
                             minute: 'HH:mm',
                             hour: 'HH:mm',
                             day: 'dd.MM'
+                            // Beispiel für Anzeige mit Zeitzonen-Abkürzung:
+                            // minute: 'HH:mm (ZZZZ)',
+                            // hour: 'HH:mm (ZZZZ)'
+                            // Beispiel für Anzeige mit UTC-Offset:
+                            // minute: 'HH:mm (ZZ)',
+                            // hour: 'HH:mm (ZZ)'
                         }
                     },
                     adapters: {
@@ -569,6 +580,7 @@
                     callbacks: {
                         title: function(context) {
                             if (context[0] && context[0].parsed && context[0].parsed.x) {
+                                // Tooltip zeigt die Zeit in der lokalen Zeitzone an
                                 return luxon.DateTime.fromMillis(context[0].parsed.x, { zone: userTimeZone }).toLocaleString(luxon.DateTime.DATETIME_SHORT_WITH_SECONDS);
                             }
                             return '';
@@ -595,7 +607,7 @@
             'chartSpeedSmall': { label: 'Geschwindigkeit', data: getSlicedData(historicalDataSpeed, 3), color: '#4caf50', timeUnit: 'minute' },
             'chartDensitySmall': { label: 'Dichte', data: getSlicedData(historicalDataDensity, 3), color: '#e57373', timeUnit: 'minute' },
             'chartBtSmall': { label: 'Bt-Wert', data: getSlicedData(historicalDataIMF, 3), color: '#2196f3', timeUnit: 'minute' },
-            'chartDstSmall': { label: 'DST-Index', data: getSlicedData(historicalDataDst, 3), color: '#f44336', timeUnit: 'minute' },
+            'chartDstSmall': { label: 'DST-Index', data: getSlicedData(historicalDataDst, 3), color: '#f44336', timeUnit: 'hour' }, // DST is hourly data
         };
 
         for (const id in chartConfigs) {
@@ -782,7 +794,7 @@
         fetch(jsonUrl)
             .then(response => {
                 if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
+                    throw new Error(`HTTP error! status: `);
                 }
                 return response.json();
             })
@@ -998,6 +1010,9 @@
                                     minute: 'HH:mm',
                                     hour: 'HH:mm',
                                     day: 'dd.MM HH:mm'
+                                    // Auch hier könntest du den Offset oder die Zeitzone hinzufügen:
+                                    // minute: 'HH:mm (ZZZ ZZZZ)',
+                                    // hour: 'HH:mm (ZZZ ZZZZ)'
                                 }
                             },
                             adapters: {
@@ -1021,34 +1036,22 @@
         const utcNow = luxon.DateTime.now().setZone('utc');
         const userLocalTime = now.setZone(userTimeZone); // Zeit in der lokalen Zeitzone des Nutzers
 
-        // Differenz in Millisekunden
-        const diffMillis = userLocalTime.diff(utcNow).toMillis();
-        // Differenz in Stunden
-        const diffHours = diffMillis / (1000 * 60 * 60);
+        // Den Zeitzonen-Offset in Stunden und Minuten ermitteln
+        // `offset` gibt den Offset in Minuten an, z.B. 120 für UTC+2
+        const offsetMinutes = userLocalTime.offset;
+        const offsetHours = Math.floor(Math.abs(offsetMinutes) / 60);
+        const remainingMinutes = Math.abs(offsetMinutes) % 60;
 
-        let sign = '';
-        let hours = Math.abs(Math.floor(diffHours)); // Ganze Stunden
-        let minutes = Math.round((Math.abs(diffHours) - hours) * 60); // Gerundete Minuten
+        // Den Vorzeichen des Offsets festlegen
+        const offsetSign = offsetMinutes >= 0 ? '+' : '-';
+        
+        // Die Kurzform der Zeitzone (z.B. CEST, CET)
+        const timezoneAbbr = userLocalTime.toFormat('ZZZZ'); // ZZZZ gibt die Kurzform aus (z.B. "CEST")
+        
+        let offsetString = `UTC:`;
 
-        if (diffHours > 0) {
-            sign = '+';
-        } else if (diffHours < 0) {
-            sign = '-';
-        } else {
-            dynamicUtcNotice.textContent = `Die Zeitangaben in diesen Grafiken sind in UTC (Ihre Zeitzone "${userTimeZone}" ist UTC-gleich).`;
-            return;
-        }
-
-        let timeOffsetString;
-        if (minutes === 0) {
-            timeOffsetString = `${sign}${hours} Stunde${hours !== 1 ? 'n' : ''}`;
-        } else {
-            timeOffsetString = `${sign}${hours} Stunde${hours !== 1 ? 'n' : ''} und ${minutes} Minute${minutes !== 1 ? 'n' : ''}`;
-        }
-
-        dynamicUtcNotice.textContent = `Bitte beachten Sie: Die Zeitangaben in diesen Grafiken sind in UTC. Um die Zeit in Ihrer lokalen Zeitzone ("${userTimeZone}") zu erhalten, müssen Sie ${sign} ${hours} Stunde${hours !== 1 ? 'n' : ''} und ${minutes} Minute${minutes !== 1 ? 'n' : ''} (UTC${sign}${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}) ${diffHours > 0 ? 'hinzurechnen' : 'abziehen'}.`;
+        dynamicUtcNotice.textContent = `Bitte beachten Sie: Die Zeitangaben in diesen Grafiken sind in UTC. Ihre lokale Zeitzone ist "" (, ).`;
     }
-
 
     // --- Initialaufrufe und Intervalle ---
     window.addEventListener('load', () => {
@@ -1060,10 +1063,10 @@
         updateDynamicUtcNotice(); 
     });
 
-    setInterval(fetchSpaceWeatherData, 60000); // Every minute for current values
-    setInterval(fetchHistoricalSpaceWeatherData, 5 * 60 * 1000); // Every 5 minutes for historical data/charts
-    setInterval(updateDRegionImage, 60 * 1000); // Update D-Region image every minute
-    // Optional: Aktualisieren Sie die Zeitzonen-Notiz stündlich, falls sich der Offset durch Sommerzeit ändert (eher selten in einer laufenden Session, aber gut für den nächsten Tag)
+    setInterval(fetchSpaceWeatherData, 60000); // Jede Minute für aktuelle Werte
+    setInterval(fetchHistoricalSpaceWeatherData, 5 * 60 * 1000); // Alle 5 Minuten für historische Daten/Charts
+    setInterval(updateDRegionImage, 60 * 1000); // D-Region Bild jede Minute aktualisieren
+    // Aktualisieren Sie die Zeitzonen-Notiz stündlich, falls sich der Offset durch Sommerzeit ändert (für Langlebigkeit)
     setInterval(updateDynamicUtcNotice, 60 * 60 * 1000); 
 </script>
 </body>
