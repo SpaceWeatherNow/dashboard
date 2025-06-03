@@ -782,7 +782,7 @@
         fetch(jsonUrl)
             .then(response => {
                 if (!response.ok) {
-                    throw new Error(`HTTP error! status: `);
+                    throw new Error(`HTTP error! status: ${response.status}`);
                 }
                 return response.json();
             })
@@ -1027,29 +1027,26 @@
         const diffHours = diffMillis / (1000 * 60 * 60);
 
         let sign = '';
-        let hours = Math.abs(diffHours);
-        let minutes = (hours - Math.floor(hours)) * 60; // Ggf. Minutenanteil berechnen
+        let hours = Math.abs(Math.floor(diffHours)); // Ganze Stunden
+        let minutes = Math.round((Math.abs(diffHours) - hours) * 60); // Gerundete Minuten
 
         if (diffHours > 0) {
-            sign = 'Addieren';
+            sign = '+';
         } else if (diffHours < 0) {
-            sign = 'Subtrahieren';
+            sign = '-';
         } else {
-            dynamicUtcNotice.textContent = `Die Zeitangaben in diesen Grafiken sind in UTC (Ihre Zeitzone "" ist UTC-gleich).`;
+            dynamicUtcNotice.textContent = `Die Zeitangaben in diesen Grafiken sind in UTC (Ihre Zeitzone "${userTimeZone}" ist UTC-gleich).`;
             return;
         }
 
-        let hoursText = Math.floor(hours);
-        let minutesText = Math.round(minutes);
-
         let timeOffsetString;
-        if (minutesText === 0) {
-            timeOffsetString = ` Stunde 'n'`;
+        if (minutes === 0) {
+            timeOffsetString = `${sign}${hours} Stunde${hours !== 1 ? 'n' : ''}`;
         } else {
-            timeOffsetString = ` Stunde 'n' und  Minute 'n'`;
+            timeOffsetString = `${sign}${hours} Stunde${hours !== 1 ? 'n' : ''} und ${minutes} Minute${minutes !== 1 ? 'n' : ''}`;
         }
 
-        dynamicUtcNotice.textContent = `Bitte beachten Sie: Die Zeitangaben in diesen Grafiken sind in UTC. Um die Zeit in Ihrer lokalen Zeitzone ("") zu erhalten, müssen Sie   (UTC '').`;
+        dynamicUtcNotice.textContent = `Bitte beachten Sie: Die Zeitangaben in diesen Grafiken sind in UTC. Um die Zeit in Ihrer lokalen Zeitzone ("${userTimeZone}") zu erhalten, müssen Sie ${sign} ${hours} Stunde${hours !== 1 ? 'n' : ''} und ${minutes} Minute${minutes !== 1 ? 'n' : ''} (UTC${sign}${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}) ${diffHours > 0 ? 'hinzurechnen' : 'abziehen'}.`;
     }
 
 
