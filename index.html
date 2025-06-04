@@ -442,28 +442,26 @@
 
     // --- Hilfsfunktion zum Slicen der Daten für einen bestimmten Zeitraum (lokale Zeitzone basierend) oder nach Anzahl ---
     function getSlicedData(sourceData, hours = null, limit = null) {
-        if (!sourceData || sourceData.length === 0) return [];
+    if (!sourceData || sourceData.length === 0) return [];
 
-        let filteredData = [...sourceData]; // Create a copy to avoid modifying original array
+    let filteredData = [...sourceData].sort((a, b) =>
+        luxon.DateTime.fromISO(a.x, { zone: 'utc' }).toMillis() - luxon.DateTime.fromISO(b.x, { zone: 'utc' }).toMillis()
+    );
 
-        // If a limit is provided, take the last 'limit' entries
-        if (limit && limit > 0) {
-            filteredData = filteredData.slice(-limit);
-        } else if (hours !== null) {
-            // Otherwise, filter by time, considering the user's local timezone
-            const nowInUserTz = luxon.DateTime.now().setZone(userTimeZone);
-            const startTimeInUserTz = nowInUserTz.minus({ hours: hours });
-            const startTimeUTC = startTimeInUserTz.toUTC(); // Convert back to UTC for comparison with UTC data
-
-            filteredData = sourceData.filter(dp => {
-                const dpTimeUTC = luxon.DateTime.fromISO(dp.x, { zone: 'utc' });
-                return dpTimeUTC >= startTimeUTC;
-            });
-        }
-        
-        // Always sort, even if sliced by limit, to ensure chronological order for charts
-        return filteredData.sort((a, b) => luxon.DateTime.fromISO(a.x, { zone: 'utc' }).toMillis() - luxon.DateTime.fromISO(b.x, { zone: 'utc' }).toMillis());
+    // Dann limit oder hours anwenden
+    if (limit && limit > 0) {
+        filteredData = filteredData.slice(-limit);
+    } else if (hours !== null) {
+        const nowInUserTz = luxon.DateTime.now().setZone(userTimeZone);
+        const startTimeInUserTz = nowInUserTz.minus({ hours: hours });
+        const startTimeUTC = startTimeInUserTz.toUTC();
+        filteredData = filteredData.filter(dp => {
+            const dpTimeUTC = luxon.DateTime.fromISO(dp.x, { zone: 'utc' });
+            return dpTimeUTC >= startTimeUTC;
+        });
     }
+    return filteredData;
+}
 
     // --- Funktion zum Abrufen historischer Daten für Charts ---
     async function fetchHistoricalSpaceWeatherData() {
@@ -498,28 +496,31 @@
             historicalDataKp.sort((a, b) => luxon.DateTime.fromISO(a.x, { zone: 'utc' }).toMillis() - luxon.DateTime.fromISO(b.x, { zone: 'utc' }).toMillis());
 
             // Magnetometerdaten (Bz und Bt) verarbeiten
-            // Filter nach source: "DSCOVR" (oder "ACE" falls es dort auftaucht)
-            dataMag.filter(item => item.source === 'DSCOVR' || item.source === 'ACE').forEach(item => {
-                if (item.bz_gsm !== null) historicalDataIMFz.push({ x: item.time_tag, y: parseFloat(item.bz_gsm) });
-                if (item.bt !== null) historicalDataIMF.push({ x: item.time_tag, y: parseFloat(item.bt) });
+            // Jetzt: Nur ACE aufnehmen
+            dataMag.filter(item => item.source === 'ACE').forEach(item => {
+                if (item.bz_gsm !== null) historicalDataIMFz.push({ x: item.time_tag, y: parseFloat(item.bz_gsm), source: item.source });
+                if (item.bt !== null) historicalDataIMF.push({ x: item.time_tag, y: parseFloat(item.bt), source: item.source });
             });
             historicalDataIMFz.sort((a, b) => luxon.DateTime.fromISO(a.x, { zone: 'utc' }).toMillis() - luxon.DateTime.fromISO(b.x, { zone: 'utc' }).toMillis());
             historicalDataIMF.sort((a, b) => luxon.DateTime.fromISO(a.x, { zone: 'utc' }).toMillis() - luxon.DateTime.fromISO(b.x, { zone: 'utc' }).toMillis());
 
             // Winddaten (Geschwindigkeit und Dichte) verarbeiten
-            dataWind.filter(item => item.source === 'DSCOVR').forEach(item => {
+            // Jetzt: Nur ACE aufnehmen
+            dataWind.filter(item => item.source === 'ACE').forEach(item => {
                 if (item.proton_speed !== null) historicalDataSpeed.push({ x: item.time_tag, y: parseFloat(item.proton_speed) });
                 if (item.proton_density !== null) historicalDataDensity.push({ x: item.time_tag, y: parseFloat(item.proton_density) });
             });
             historicalDataSpeed.sort((a, b) => luxon.DateTime.fromISO(a.x, { zone: 'utc' }).toMillis() - luxon.DateTime.fromISO(b.x, { zone: 'utc' }).toMillis());
             historicalDataDensity.sort((a, b) => luxon.DateTime.fromISO(a.x, { zone: 'utc' }).toMillis() - luxon.DateTime.fromISO(b.x, { zone: 'utc' }).toMillis());
 
-            // DST-Daten verarbeiten
-            dataDstHistorical.forEach(item => {
-                if (item.dst !== null) {
-                    historicalDataDst.push({ x: item.time_tag, y: parseFloat(item.dst) });
-                }
-            });
+            // DST-Daten verarbeiten (älteste oben, neueste unten)
+            // Für den Graphen: die letzten 50 Werte von unten nach oben, dann chronologisch sortieren
+            let dstSlice = dataDstHistorical.slice(-50);
+            historicalDataDst = dstSlice.map(item =>
+                item.dst !== null
+                    ? { x: item.time_tag, y: parseFloat(item.dst) }
+                    : null
+            ).filter(Boolean);
             historicalDataDst.sort((a, b) => luxon.DateTime.fromISO(a.x, { zone: 'utc' }).toMillis() - luxon.DateTime.fromISO(b.x, { zone: 'utc' }).toMillis());
 
             renderSmallCharts();
@@ -536,7 +537,7 @@
         }
         smallChartInstances = {};
 
-        const commonChartOptions = (specificTimeUnit = 'hour') => ({
+        const commonChartOptions = (specificTimeUnit = 'hour', customTimeStep = null) => ({
             responsive: true,
             plugins: { legend: { display: false } },
             scales: {
@@ -544,6 +545,7 @@
                     type: 'time',
                     time: {
                         unit: specificTimeUnit,
+                        stepSize: customTimeStep, // Optional: Schrittweite für die Zeitleiste
                         tooltipFormat: 'dd.MM.yyyy HH:mm:ss',
                         displayFormats: {
                             minute: 'HH:mm',
@@ -553,7 +555,7 @@
                     },
                     adapters: {
                         date: {
-                            zone: userTimeZone // Angepasst an die lokale Zeitzone des Nutzers
+                            zone: userTimeZone
                         }
                     },
                     ticks: { color: '#888', maxRotation: 0, autoSkipPadding: 10, source: 'auto', maxTicksLimit: 6 },
@@ -579,8 +581,8 @@
                             if (context.parsed.y !== null) {
                                 lbl += context.parsed.y.toFixed(2);
                                 if (context.dataset.label === 'Bz-Wert' || context.dataset.label === 'IMF total field' || context.dataset.label === 'DST-Index') lbl += ' nT';
-                                else if (context.dataset.label === 'Geschwindigkeit') lbl += ' km/s';
-                                else if (context.dataset.label === 'Dichte') lbl += ' p/cm³';
+                                else if (context.dataset.label === 'Geschwindigkeit' || context.dataset.label === 'Solarwindgeschwindigkeit') lbl += ' km/s';
+                                else if (context.dataset.label === 'Dichte' || context.dataset.label === 'Solarwinddichte') lbl += ' p/cm³';
                             }
                             return lbl;
                         }
@@ -591,11 +593,12 @@
 
         const chartConfigs = {
             'chartKpSmall': { label: 'Kp-Index', data: getSlicedData(historicalDataKp, 3), color: '#00bcd4', timeUnit: 'minute' },
-            'chartBzSmall': { label: 'Bz-Wert', data: getSlicedData(historicalDataIMFz, 3), color: '#ff9800', timeUnit: 'minute' },
-            'chartSpeedSmall': { label: 'Geschwindigkeit', data: getSlicedData(historicalDataSpeed, 3), color: '#4caf50', timeUnit: 'minute' },
-            'chartDensitySmall': { label: 'Dichte', data: getSlicedData(historicalDataDensity, 3), color: '#e57373', timeUnit: 'minute' },
-            'chartBtSmall': { label: 'Bt-Wert', data: getSlicedData(historicalDataIMF, 3), color: '#2196f3', timeUnit: 'minute' },
-            'chartDstSmall': { label: 'DST-Index', data: getSlicedData(historicalDataDst, 3), color: '#f44336', timeUnit: 'minute' },
+            'chartBzSmall': { label: 'Bz-Wert', data: getSlicedData(historicalDataIMFz, 1), color: '#ff9800', timeUnit: 'minute' },
+            'chartSpeedSmall': { label: 'Geschwindigkeit', data: getSlicedData(historicalDataSpeed, 1), color: '#4caf50', timeUnit: 'minute' },
+            'chartDensitySmall': { label: 'Dichte', data: getSlicedData(historicalDataDensity, 1), color: '#e57373', timeUnit: 'minute' },
+            'chartBtSmall': { label: 'Bt-Wert', data: getSlicedData(historicalDataIMF, 1), color: '#2196f3', timeUnit: 'minute' },
+            // DST: 3h, 5-Minuten-Takt auf der Zeitachse
+            'chartDstSmall': { label: 'DST-Index', data: getSlicedData(historicalDataDst, 3), color: '#f44336', timeUnit: 'minute', customStep: 5 }
         };
 
         for (const id in chartConfigs) {
@@ -609,10 +612,25 @@
                         borderColor: config.color,
                         backgroundColor: 'transparent',
                         tension: 0.3,
-                        pointRadius: 0
+                        pointRadius: 0,
+                        borderWidth: 1
                     }]
                 };
-                let options = commonChartOptions(config.timeUnit || 'hour');
+                // Für DST-Graphen: 5-Minuten-Takt
+                let options;
+                if (id === 'chartDstSmall') {
+                    options = commonChartOptions(config.timeUnit || 'hour', 5);
+                    options.scales.x.time.unit = 'minute';
+                    options.scales.x.time.stepSize = 5;
+                    options.scales.x.ticks.maxTicksLimit = 20;
+                    options.scales.x.time.displayFormats = {
+                        minute: 'HH:mm',
+                        hour: 'HH:mm',
+                        day: 'dd.MM'
+                    };
+                } else {
+                    options = commonChartOptions(config.timeUnit || 'hour');
+                }
 
                 if (config.isSinglePoint) {
                     options.scales.x = {
@@ -638,13 +656,13 @@
             ] = await Promise.all([
                 fetch('https://services.swpc.noaa.gov/json/planetary_k_index_1m.json'),
                 fetch('https://services.swpc.noaa.gov/json/rtsw/rtsw_wind_1m.json'),
-                fetch('https://services.swpc.noaa.gov/json/rtsw/rtsw_mag_1m.json'), // Changed this source
+                fetch('https://services.swpc.noaa.gov/json/rtsw/rtsw_mag_1m.json'),
                 fetch('https://services.swpc.noaa.gov/json/geospace/geospace_dst_1_hour.json'),
             ]);
 
             const dataKp = await resKp.json();
             const dataWind = await resWind.json();
-            const dataMag = await resMag.json(); // Data from rtsw_mag_1m.json
+            const dataMag = await resMag.json();
             const dataDst = await resDst.json();
 
             // Kp Index - Neueste ist oft am Ende des Arrays
@@ -652,26 +670,37 @@
             currentKpIndex = latestKpData && latestKpData.kp_index !== null ? parseFloat(latestKpData.kp_index) : 0;
             document.getElementById('kp-index').textContent = latestKpData ? currentKpIndex.toFixed(1) : 'N/A';
 
-            // Solar Wind Speed & Density
-            const latestWindData = dataWind.filter(item => item.source === 'DSCOVR' && item.proton_speed !== null && item.proton_density !== null)
+            // Solar Wind Speed & Density (nur ACE)
+            const latestWindData = dataWind.filter(item => item.source === 'ACE' && item.proton_speed !== null && item.proton_density !== null)
                                             .sort((a,b) => luxon.DateTime.fromISO(b.time_tag, { zone: 'utc' }).toMillis() - luxon.DateTime.fromISO(a.time_tag, { zone: 'utc' }).toMillis())[0];
             currentSolarWindSpeed = latestWindData ? parseFloat(latestWindData.proton_speed) : 0;
             currentSolarWindDensity = latestWindData ? parseFloat(latestWindData.proton_density) : 0;
             document.getElementById('solar-wind-speed').textContent = latestWindData ? currentSolarWindSpeed.toFixed(0) : 'N/A';
             document.getElementById('solar-wind-density').textContent = latestWindData ? currentSolarWindDensity.toFixed(2) : 'N/A';
 
-            // Bz & Bt from rtsw_mag_1m.json (filter by source and get latest)
-            // Sort to get the most recent data point from DSCOVR or ACE
-            const latestMagData = dataMag.filter(item => item.source === 'DSCOVR' || item.source === 'ACE')
-                                         .sort((a,b) => luxon.DateTime.fromISO(b.time_tag, { zone: 'utc' }).toMillis() - luxon.DateTime.fromISO(a.time_tag, { zone: 'utc' }).toMillis())[0];
+            // Bz & Bt from rtsw_mag_1m.json (nur ACE)
+            function getLatestMagValue(source, key) {
+                return dataMag
+                    .filter(item => item.source === source && item[key] !== null)
+                    .sort((a, b) => luxon.DateTime.fromISO(b.time_tag, { zone: 'utc' }).toMillis() - luxon.DateTime.fromISO(a.time_tag, { zone: 'utc' }).toMillis())[0];
+            }
+            const latestMagACE = getLatestMagValue('ACE', 'bz_gsm');
+            const latestBtACE = getLatestMagValue('ACE', 'bt');
 
-            currentBz = latestMagData && latestMagData.bz_gsm !== null ? parseFloat(latestMagData.bz_gsm) : 0;
-            currentBt = latestMagData && latestMagData.bt !== null ? parseFloat(latestMagData.bt) : 0;
-            document.getElementById('bz-value').textContent = latestMagData ? currentBz.toFixed(2) : 'N/A';
-            document.getElementById('bt-value').textContent = latestMagData ? currentBt.toFixed(2) : 'N/A';
+            currentBz = latestMagACE && latestMagACE.bz_gsm !== null ? parseFloat(latestMagACE.bz_gsm) : 0;
+            currentBt = latestBtACE && latestBtACE.bt !== null ? parseFloat(latestBtACE.bt) : 0;
 
-            // DST Index (most recent is usually at index 0)
-            const latestDstData = dataDst[0];
+            // Zeige nur ACE Werte an
+            let bzText = '';
+            if (latestMagACE && latestMagACE.bz_gsm !== null) bzText += `ACE: ${parseFloat(latestMagACE.bz_gsm).toFixed(2)}`;
+            document.getElementById('bz-value').textContent = bzText || 'N/A';
+
+            let btText = '';
+            if (latestBtACE && latestBtACE.bt !== null) btText += `ACE: ${parseFloat(latestBtACE.bt).toFixed(2)}`;
+            document.getElementById('bt-value').textContent = btText || 'N/A';
+
+            // DST Index (neueste ist ganz unten im Array)
+            const latestDstData = dataDst[dataDst.length - 1];
             document.getElementById('dst-index').textContent = latestDstData && latestDstData.dst !== null ? parseFloat(latestDstData.dst).toFixed(2) : 'N/A';
 
             // Alle "Lade..."-Texte entfernen und ggf. Fehlertexte zurücksetzen
@@ -732,7 +761,20 @@
     }
 
     function updateAuroraProbability(latitude) {
-        if (latitude === undefined || currentKpIndex === undefined || currentBz === undefined || currentSolarWindSpeed === undefined || currentSolarWindDensity === undefined || currentBt === undefined) {
+        // Realistischere Schätzung, abhängig von Standort, Uhrzeit (Nacht/Tag), Kp, Bz, Solarwind, Dichte, Bt
+        if (
+            latitude === undefined ||
+            currentKpIndex === undefined ||
+            isNaN(currentKpIndex) ||
+            currentBz === undefined ||
+            isNaN(currentBz) ||
+            currentSolarWindSpeed === undefined ||
+            isNaN(currentSolarWindSpeed) ||
+            currentSolarWindDensity === undefined ||
+            isNaN(currentSolarWindDensity) ||
+            currentBt === undefined ||
+            isNaN(currentBt)
+        ) {
             document.getElementById('aurora-probability').textContent = 'Daten fehlen';
             document.getElementById('aurora-probability').classList.add('error');
             return;
@@ -740,31 +782,59 @@
 
         let probability = 0;
 
-        if (latitude > 70) probability += 20;
-        else if (latitude > 65) probability += 10;
-        else if (latitude > 60) probability += 5;
-        else probability -= 15;
-        probability = Math.max(0, probability);
+        // 1. Breitengrad: Basis-Chance
+        if (latitude > 70) probability += 40;
+        else if (latitude > 66) probability += 25;
+        else if (latitude > 62) probability += 10;
+        else if (latitude > 58) probability += 3;
+        else probability -= 10;
 
-        if (currentKpIndex >= 5) probability += (currentKpIndex - 4) * 10;
-        else if (currentKpIndex >= 3) probability += (currentKpIndex - 2) * 3;
+        // 2. Nachtzeit: Nur nachts ist Polarlicht sichtbar
+        // Berechne lokale Zeit (Luxon)
+        const now = luxon.DateTime.now().setZone(userTimeZone);
+        const hour = now.hour;
+        // Nacht: 18-6 Uhr
+        let isNight = (hour >= 18 || hour < 6);
+        if (!isNight) probability -= 30; // Tagsüber fast keine Sichtbarkeit
 
-        if (currentBz < -15) probability += 20;
-        else if (currentBz < -10) probability += 10;
-        else if (currentBz < -5) probability += 5;
+        // 3. Kp-Index (starker Einfluss)
+        if (currentKpIndex >= 8) probability += 40;
+        else if (currentKpIndex >= 7) probability += 30;
+        else if (currentKpIndex >= 6) probability += 20;
+        else if (currentKpIndex >= 5) probability += 10;
+        else if (currentKpIndex >= 4) probability += 5;
 
-        if (currentSolarWindSpeed > 700) probability += 10;
-        else if (currentSolarWindSpeed > 600) probability += 5;
-        else if (currentSolarWindSpeed > 500) probability += 2;
+        // 4. Bz (negativ ist gut)
+        let bzVal = typeof currentBz === 'string' ? parseFloat(currentBz) : currentBz;
+        if (bzVal < -15) probability += 15;
+        else if (bzVal < -10) probability += 10;
+        else if (bzVal < -5) probability += 5;
+        else if (bzVal > 0) probability -= 10;
 
-        if (currentSolarWindDensity > 30) probability += 3;
-        else if (currentSolarWindDensity > 20) probability += 1;
+        // 5. Solarwindgeschwindigkeit
+        let speedVal = typeof currentSolarWindSpeed === 'string' ? parseFloat(currentSolarWindSpeed) : currentSolarWindSpeed;
+        if (speedVal > 800) probability += 10;
+        else if (speedVal > 700) probability += 7;
+        else if (speedVal > 600) probability += 4;
+        else if (speedVal < 350) probability -= 5;
 
-        if (currentBt > 20) probability += 2;
-        else if (currentBt > 15) probability += 1;
+        // 6. Dichte
+        let densityVal = typeof currentSolarWindDensity === 'string' ? parseFloat(currentSolarWindDensity) : currentSolarWindDensity;
+        if (densityVal > 30) probability += 3;
+        else if (densityVal > 20) probability += 1;
 
+        // 7. Bt
+        let btVal = typeof currentBt === 'string' ? parseFloat(currentBt) : currentBt;
+        if (btVal > 20) probability += 2;
+        else if (btVal > 15) probability += 1;
+
+        // 8. Minimalwert auf 0, Maximalwert auf 100 begrenzen
         probability = Math.max(0, Math.min(100, probability));
-        document.getElementById('aurora-probability').textContent = probability.toFixed(0) + '%';
+
+        // 9. Abrunden für realistische Anzeige
+        let displayProb = probability <= 0 ? "<1" : probability.toFixed(0);
+
+        document.getElementById('aurora-probability').textContent = displayProb + '%';
         document.getElementById('aurora-probability').classList.remove('loading', 'error');
     }
 
@@ -894,7 +964,7 @@
     });
 
     function renderModalChart(period) {
-        let chartData, chartLabel, color, valueSuffix = '', timeUnit = 'hour'; // Default to hour for modal charts
+        let chartData, chartLabel, color, valueSuffix = '', timeUnit = 'hour';
         let limit = null;
         let hours = null;
 
@@ -906,36 +976,98 @@
 
         let sourceFullData;
 
+        // Farben für ACE
+        const bzColors = { ACE: '#00e6e6' };
+        const btColors = { ACE: '#b266ff' };
+
         switch(currentModalChartType) {
             case 'Kp':
                 sourceFullData = historicalDataKp; chartLabel = 'Kp-Index'; color = '#00bcd4'; timeUnit = 'minute';
+                chartData = [{
+                    label: chartLabel,
+                    data: getSlicedData(sourceFullData, hours, limit),
+                    borderColor: color,
+                    backgroundColor: 'rgba(0,0,0,0)',
+                    tension: 0.3, // <--- wieder Kurven
+                    pointRadius: 0
+                }];
+                valueSuffix = '';
                 break;
-            case 'IMFz':
-                sourceFullData = historicalDataIMFz; chartLabel = 'Bz-Wert'; color = '#ff9800'; valueSuffix = ' nT'; timeUnit = 'minute';
+            case 'IMFz': {
+                // Bz: Nur ACE Dataset
+                const aceData = getSlicedData(historicalDataIMFz.filter(d => d.source === 'ACE'), hours, limit);
+                chartData = [
+                    {
+                        label: 'Bz ACE',
+                        data: aceData,
+                        borderColor: bzColors.ACE,
+                        backgroundColor: 'rgba(0,0,0,0)',
+                        tension: 0.3, // <--- wieder Kurven
+                        pointRadius: 0
+                    }
+                ];
+                chartLabel = 'Bz-Wert';
+                valueSuffix = ' nT';
+                timeUnit = 'minute';
                 break;
+            }
+            case 'IMF': {
+                // Bt: Nur ACE Dataset
+                const aceData = getSlicedData(historicalDataIMF.filter(d => d.source === 'ACE'), hours, limit);
+                chartData = [
+                    {
+                        label: 'Bt ACE',
+                        data: aceData,
+                        borderColor: btColors.ACE,
+                        backgroundColor: 'rgba(0,0,0,0)',
+                        tension: 0.3, // <--- wieder Kurven
+                        pointRadius: 0
+                    }
+                ];
+                chartLabel = 'Bt-Wert';
+                valueSuffix = ' nT';
+                timeUnit = 'minute';
+                break;
+            }
             case 'Speed':
                 sourceFullData = historicalDataSpeed; chartLabel = 'Solarwindgeschwindigkeit'; color = '#4caf50'; valueSuffix = ' km/s'; timeUnit = 'minute';
+                chartData = [{
+                    label: chartLabel,
+                    data: getSlicedData(sourceFullData, hours, limit),
+                    borderColor: color,
+                    backgroundColor: 'rgba(0,0,0,0)',
+                    tension: 0.3, // <--- wieder Kurven
+                    pointRadius: 0
+                }];
                 break;
             case 'Density':
                 sourceFullData = historicalDataDensity; chartLabel = 'Solarwinddichte'; color = '#e57373'; valueSuffix = ' p/cm³'; timeUnit = 'minute';
-                break;
-            case 'IMF':
-                sourceFullData = historicalDataIMF; chartLabel = 'Bt-Wert'; color = '#2196f3'; valueSuffix = ' nT'; timeUnit = 'minute';
+                chartData = [{
+                    label: chartLabel,
+                    data: getSlicedData(sourceFullData, hours, limit),
+                    borderColor: color,
+                    backgroundColor: 'rgba(0,0,0,0)',
+                    tension: 0.3, // <--- wieder Kurven
+                    pointRadius: 0
+                }];
                 break;
             case 'DST':
-                sourceFullData = historicalDataDst; chartLabel = 'DST-Index'; color = '#f44336'; valueSuffix = ' nT'; timeUnit = 'hour'; // DST is hourly data
+                sourceFullData = historicalDataDst; chartLabel = 'DST-Index'; color = '#f44336'; valueSuffix = ' nT'; timeUnit = 'minute';
+                chartData = [{
+                    label: chartLabel,
+                    data: getSlicedData(sourceFullData, hours, limit),
+                    borderColor: color,
+                    backgroundColor: 'rgba(0,0,0,0)',
+                    tension: 0.3,
+                    pointRadius: 0
+                }];
                 break;
             default: return;
         }
 
-        chartData = getSlicedData(sourceFullData, hours, limit);
-
         if (modalChartInstance) {
-            modalChartInstance.data.datasets[0].data = chartData;
-            modalChartInstance.options.scales.x.time.unit = timeUnit;
-            // If the time unit changes, it's often better to redraw the chart fully for scale formatting
             modalChartInstance.destroy();
-            modalChartInstance = null; // Set to null so the new chart is created below
+            modalChartInstance = null;
         }
 
         if (!modalChartInstance) {
@@ -952,27 +1084,73 @@
                 grid: { color: 'rgba(255,255,255,0.1)' }
             };
 
-            modalChartInstance = new Chart(modalChartCanvas, {
-                type: 'line',
-                data: {
-                    datasets: [{
-                        label: chartLabel,
-                        data: chartData,
-                        borderColor: color,
-                        backgroundColor: 'rgba(0,0,0,0)',
-                        tension: 0.3,
-                        pointRadius: 0
-                    }]
-                },
-                options: {
-                    responsive: true, maintainAspectRatio: false,
+            // DST: 5-Minuten-Takt in großer Ansicht
+            let chartOptions;
+            if (currentModalChartType === 'DST') {
+                chartOptions = {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
                     plugins: {
                         legend: { display: true, labels: { color: '#e0e0e0' } },
                         tooltip: {
+                            mode: 'index',
+                            intersect: false,
                             callbacks: {
                                 title: function(context) {
                                     if (context[0] && context[0].parsed && context[0].parsed.x) {
-                                        // Luxon kann direkt in der userTimeZone formatieren
+                                        return luxon.DateTime.fromMillis(context[0].parsed.x, { zone: userTimeZone }).toLocaleString(luxon.DateTime.DATETIME_SHORT_WITH_SECONDS);
+                                    }
+                                    return '';
+                                },
+                                label: function(context) {
+                                    let lbl = context.dataset.label || '';
+                                    if (lbl) lbl += ': ';
+                                    if (context.parsed.y !== null) {
+                                        lbl += context.parsed.y.toFixed(2) + valueSuffix;
+                                    }
+                                    return lbl;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            type: 'time',
+                            time: {
+                                unit: 'minute',
+                                stepSize: 5,
+                                tooltipFormat: 'dd.MM.yyyy HH:mm:ss',
+                                displayFormats: {
+                                    minute: 'HH:mm',
+                                    hour: 'HH:mm',
+                                    day: 'dd.MM HH:mm'
+                                }
+                            },
+                            adapters: {
+                                date: {
+                                    zone: userTimeZone
+                                }
+                            },
+                            ticks: Object.assign({}, xAxisTicksConfig, { maxTicksLimit: 20 }),
+                            grid: { color: 'rgba(255,255,255,0.1)' }
+                        },
+                        y: yAxisConfig
+                    }
+                };
+            } else {
+                chartOptions = {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        legend: { display: true, labels: { color: '#e0e0e0' } },
+                        tooltip: {
+                            mode: 'index',
+                            intersect: false,
+                            callbacks: {
+                                title: function(context) {
+                                    if (context[0] && context[0].parsed && context[0].parsed.x) {
                                         return luxon.DateTime.fromMillis(context[0].parsed.x, { zone: userTimeZone }).toLocaleString(luxon.DateTime.DATETIME_SHORT_WITH_SECONDS);
                                     }
                                     return '';
@@ -1002,7 +1180,7 @@
                             },
                             adapters: {
                                 date: {
-                                    zone: userTimeZone // Angepasst an die lokale Zeitzone des Nutzers
+                                    zone: userTimeZone
                                 }
                             },
                             ticks: xAxisTicksConfig,
@@ -1010,7 +1188,15 @@
                         },
                         y: yAxisConfig
                     }
-                }
+                };
+            }
+
+            modalChartInstance = new Chart(modalChartCanvas, {
+                type: 'line',
+                data: {
+                    datasets: chartData
+                },
+                options: chartOptions
             });
         }
     }
@@ -1019,37 +1205,35 @@
     function updateDynamicUtcNotice() {
         const now = luxon.DateTime.now();
         const utcNow = luxon.DateTime.now().setZone('utc');
-        const userLocalTime = now.setZone(userTimeZone); // Zeit in der lokalen Zeitzone des Nutzers
+        const userLocalTime = now.setZone(userTimeZone);
 
-        // Differenz in Millisekunden
-        const diffMillis = userLocalTime.diff(utcNow).toMillis();
-        // Differenz in Stunden
-        const diffHours = diffMillis / (1000 * 60 * 60);
+        // Differenz in Minuten
+        const diffMinutes = userLocalTime.offset - utcNow.offset;
+        const absMinutes = Math.abs(diffMinutes);
+        const hours = Math.floor(absMinutes / 60);
+        const minutes = absMinutes % 60;
 
-        let sign = '';
-        let hours = Math.abs(diffHours);
-        let minutes = (hours - Math.floor(hours)) * 60; // Ggf. Minutenanteil berechnen
-
-        if (diffHours > 0) {
-            sign = 'Addieren';
-        } else if (diffHours < 0) {
-            sign = 'Subtrahieren';
-        } else {
-            dynamicUtcNotice.textContent = `Die Zeitangaben in diesen Grafiken sind in UTC (Ihre Zeitzone "" ist UTC-gleich).`;
-            return;
+        let direction = '';
+        if (diffMinutes > 0) {
+            direction = 'dazuzählen';
+        } else if (diffMinutes < 0) {
+            direction = 'abziehen';
         }
 
-        let hoursText = Math.floor(hours);
-        let minutesText = Math.round(minutes);
-
-        let timeOffsetString;
-        if (minutesText === 0) {
-            timeOffsetString = ` Stunde 'n'`;
-        } else {
-            timeOffsetString = ` Stunde 'n' und  Minute 'n'`;
+        let offsetString = '';
+        if (hours !== 0 && minutes !== 0) {
+            offsetString = `${hours} Stunde(n) und ${minutes} Minute(n)`;
+        } else if (hours !== 0) {
+            offsetString = `${hours} Stunde(n)`;
+        } else if (minutes !== 0) {
+            offsetString = `${minutes} Minute(n)`;
         }
 
-        dynamicUtcNotice.textContent = `Bitte beachten Sie: Die Zeitangaben in diesen Grafiken sind in UTC. Um die Zeit in Ihrer lokalen Zeitzone ("") zu erhalten, müssen Sie   (UTC '').`;
+        if (diffMinutes === 0) {
+            dynamicUtcNotice.textContent = `Die Zeitangaben in diesen Grafiken sind in UTC. Ihre Zeitzone ist "${userTimeZone}" (UTC±0).`;
+        } else {
+            dynamicUtcNotice.textContent = `Die Zeitangaben in diesen Grafiken sind in UTC. Ihre Zeitzone ist "${userTimeZone}". Um die Zeit in Ihrer lokalen Zeitzone zu erhalten, müssen Sie ${offsetString} ${direction}.`;
+        }
     }
 
 
@@ -1064,7 +1248,7 @@
     });
 
     setInterval(fetchSpaceWeatherData, 10000); // Every 10 sec for current values
-    setInterval(fetchHistoricalSpaceWeatherData, 1 * 60 * 1000); // Every 1 minute for historical data/charts
+    setInterval(fetchHistoricalSpaceWeatherData, 10000); // Every 1 minute for historical data/charts
     setInterval(updateDRegionImage, 60 * 1000); // Update D-Region image every minute
     // Optional: Aktualisieren Sie die Zeitzonen-Notiz stündlich, falls sich der Offset durch Sommerzeit ändert (eher selten in einer laufenden Session, aber gut für den nächsten Tag)
     setInterval(updateDynamicUtcNotice, 60 * 60 * 1000); 
